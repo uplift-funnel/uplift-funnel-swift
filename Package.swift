@@ -2,26 +2,31 @@
 import PackageDescription
 
 let package = Package(
-    name: "FunnelOnboarding",
+    name: "UpliftFunnel",
     platforms: [
-        .iOS(.v17),
-        .macOS(.v14),
+        .iOS(.v15),
+        // macOS is included only so `swift build` / `swift test` run from the CLI;
+        // UIKit-only code is gated behind `#if canImport(UIKit)`.
+        .macOS(.v12),
     ],
     products: [
         .library(
-            name: "FunnelOnboarding",
-            targets: ["FunnelOnboarding"]
+            name: "UpliftFunnel",
+            targets: ["UpliftFunnel"]
         ),
     ],
     targets: [
         .target(
-            name: "FunnelOnboarding",
-            path: "Sources/FunnelOnboarding"
+            name: "UpliftFunnel",
+            path: "Sources/UpliftFunnel"
         ),
         .testTarget(
-            name: "FunnelOnboardingTests",
-            dependencies: ["FunnelOnboarding"],
-            path: "Tests/FunnelOnboardingTests"
+            name: "UpliftFunnelTests",
+            dependencies: ["UpliftFunnel"],
+            path: "Tests/UpliftFunnelTests",
+            resources: [
+                .copy("Fixtures")
+            ]
         ),
     ]
 )

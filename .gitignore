@@ -1,5 +1,8 @@
 .DS_Store
 .build/
+build/
 .swiftpm/
 *.xcodeproj
+!Example/UpliftFunnelExample.xcodeproj
 Package.resolved
+xcuserdata/

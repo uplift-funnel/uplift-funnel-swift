@@ -1,0 +1,972 @@
+{
+  "schema_version": 1,
+  "id": "primitive-catalog",
+  "name": "Primitive catalog sampler — all 30 node types",
+  "entry_screen_id": "carousel",
+  "default_locale": "en",
+  "locales": [
+    "en",
+    "tr"
+  ],
+  "variables": [
+    {
+      "name": "focus_areas",
+      "type": "array_string"
+    },
+    {
+      "name": "weekly_goal",
+      "type": "number"
+    },
+    {
+      "name": "name",
+      "type": "string"
+    },
+    {
+      "name": "age",
+      "type": "number"
+    },
+    {
+      "name": "energy",
+      "type": "number"
+    },
+    {
+      "name": "reminders",
+      "type": "boolean"
+    },
+    {
+      "name": "avatar",
+      "type": "string"
+    },
+    {
+      "name": "birthday",
+      "type": "date"
+    },
+    {
+      "name": "app_rating",
+      "type": "number"
+    },
+    {
+      "name": "plan",
+      "type": "string"
+    },
+    {
+      "name": "cam_perm",
+      "type": "boolean"
+    }
+  ],
+  "theme": {
+    "tokens": {
+      "colors": {
+        "primary": "#16a34a",
+        "accent": "#16a34a",
+        "background": "#ffffff",
+        "surface": "#f4f4f5",
+        "text_primary": "#0a0a0a",
+        "text_secondary": "#71717a",
+        "border": "#e4e4e7",
+        "error": "#dc2626",
+        "success": "#16a34a"
+      },
+      "typography": {
+        "font_family": "system",
+        "font_weight_scale": "regular"
+      },
+      "shape": {
+        "corner_radius": 14,
+        "shadow_style": "soft"
+      },
+      "spacing": {
+        "unit": 4
+      }
+    }
+  },
+  "localizations": {
+    "en": {
+      "cat.q": "Where should we focus?",
+      "cat.opt.strength": "Strength",
+      "cat.opt.cardio": "Cardio",
+      "cat.opt.mobility": "Mobility",
+      "cat.goal": "Workouts per week",
+      "cat.min": "Easy",
+      "cat.max": "Intense",
+      "cat.quote": "I hit my first 5k after two weeks.",
+      "cat.author": "Sam, verified",
+      "cat.cta": "Continue",
+      "cat.hero.title": "Meet {{app_name}}",
+      "cat.hero.body": "A **plan built around you**.\nSwipe through to see how.",
+      "cat.inputs.title": "Tell us about you",
+      "cat.name.ph": "Your name",
+      "cat.energy": "How's your energy today?",
+      "cat.reminders": "Daily reminders",
+      "cat.birthday": "Date of birth",
+      "cat.social.title": "Loved by thousands",
+      "cat.rating.q": "Rate your experience",
+      "cat.plan.title": "Choose your plan",
+      "cat.plan.monthly": "Monthly",
+      "cat.plan.yearly": "Yearly",
+      "cat.plan.badge": "Best value",
+      "cat.rich": "Your **personalized** program is ready.\n\nWe combined *cardio*, strength and recovery into one weekly rhythm.",
+      "cat.loading": "Building your plan",
+      "cat.perm.body": "We use the camera for progress photos.",
+      "cat.done": "Start now"
+    },
+    "tr": {
+      "cat.q": "Neye odaklanalım?",
+      "cat.opt.strength": "Güç",
+      "cat.opt.cardio": "Kardiyo",
+      "cat.opt.mobility": "Esneklik",
+      "cat.goal": "Haftalık antrenman",
+      "cat.min": "Kolay",
+      "cat.max": "Yoğun",
+      "cat.quote": "İki haftada ilk 5k'mı koştum.",
+      "cat.author": "Sam, onaylı",
+      "cat.cta": "Devam",
+      "cat.hero.title": "{{app_name}} ile tanış",
+      "cat.hero.body": "**Sana özel bir plan**.\nNasıl olduğunu görmek için kaydır.",
+      "cat.inputs.title": "Bize kendini anlat",
+      "cat.name.ph": "Adın",
+      "cat.energy": "Bugün enerjin nasıl?",
+      "cat.reminders": "Günlük hatırlatıcılar",
+      "cat.birthday": "Doğum tarihi",
+      "cat.social.title": "Binlerce kişi seviyor",
+      "cat.rating.q": "Deneyimini puanla",
+      "cat.plan.title": "Planını seç",
+      "cat.plan.monthly": "Aylık",
+      "cat.plan.yearly": "Yıllık",
+      "cat.plan.badge": "En avantajlı",
+      "cat.rich": "**Kişiselleştirilmiş** programın hazır.\n\n*Kardiyo*, güç ve toparlanmayı tek bir haftalık ritme yerleştirdik.",
+      "cat.loading": "Planın hazırlanıyor",
+      "cat.perm.body": "İlerleme fotoğrafları için kamerayı kullanıyoruz.",
+      "cat.done": "Hemen başla"
+    }
+  },
+  "screens": [
+    {
+      "id": "carousel",
+      "archetype": "multi_choice",
+      "top_bar": {
+        "progress": "dots"
+      },
+      "root": {
+        "type": "stack",
+        "props": {
+          "direction": "column",
+          "align": "stretch",
+          "gap": 16
+        },
+        "style": {
+          "padding": 24
+        },
+        "children": [
+          {
+            "type": "carousel",
+            "id": "hero_carousel",
+            "props": {
+              "indicator": "dots",
+              "slides": [
+                {
+                  "type": "image",
+                  "props": {
+                    "url": "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=1200&q=80",
+                    "height": 150,
+                    "radius": 16
+                  }
+                },
+                {
+                  "type": "image",
+                  "props": {
+                    "url": "https://images.unsplash.com/photo-1518611012118-696072aa579a?w=1200&q=80",
+                    "height": 150,
+                    "radius": 16
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "text",
+            "id": "q",
+            "props": {
+              "value": {
+                "key": "cat.q"
+              },
+              "role": "title"
+            }
+          },
+          {
+            "type": "choice",
+            "id": "focus_choice",
+            "bind": {
+              "save_to": "focus_areas"
+            },
+            "props": {
+              "mode": "multi",
+              "layout": "chip",
+              "min": 1,
+              "options": [
+                {
+                  "value": "strength",
+                  "label": {
+                    "key": "cat.opt.strength"
+                  },
+                  "icon": "💪"
+                },
+                {
+                  "value": "cardio",
+                  "label": {
+                    "key": "cat.opt.cardio"
+                  },
+                  "icon": "🏃"
+                },
+                {
+                  "value": "mobility",
+                  "label": {
+                    "key": "cat.opt.mobility"
+                  },
+                  "icon": "🧘"
+                }
+              ]
+            }
+          },
+          {
+            "type": "divider",
+            "props": {
+              "thickness": 1,
+              "color": "border"
+            }
+          },
+          {
+            "type": "text",
+            "id": "goal_label",
+            "props": {
+              "value": {
+                "key": "cat.goal"
+              },
+              "role": "label"
+            }
+          },
+          {
+            "type": "slider",
+            "id": "goal_slider",
+            "bind": {
+              "save_to": "weekly_goal"
+            },
+            "props": {
+              "min": 1,
+              "max": 7,
+              "step": 1,
+              "style": "stepped",
+              "min_label": {
+                "key": "cat.min"
+              },
+              "max_label": {
+                "key": "cat.max"
+              }
+            }
+          },
+          {
+            "type": "testimonial",
+            "id": "proof",
+            "props": {
+              "author": {
+                "key": "cat.author"
+              },
+              "quote": {
+                "key": "cat.quote"
+              },
+              "rating": 5
+            }
+          },
+          {
+            "type": "spacer",
+            "props": {
+              "flex": 1
+            }
+          },
+          {
+            "type": "button",
+            "id": "cta",
+            "props": {
+              "label": {
+                "key": "cat.cta"
+              },
+              "action": "next",
+              "variant": "filled",
+              "full_width": true
+            }
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "go": "inputs"
+        }
+      ]
+    },
+    {
+      "id": "inputs",
+      "archetype": "text_input",
+      "top_bar": {
+        "progress": "dots",
+        "close": true
+      },
+      "root": {
+        "type": "stack",
+        "props": {
+          "direction": "column",
+          "align": "stretch",
+          "gap": 20
+        },
+        "style": {
+          "padding": 24
+        },
+        "children": [
+          {
+            "type": "text",
+            "props": {
+              "value": {
+                "key": "cat.inputs.title"
+              },
+              "role": "title"
+            }
+          },
+          {
+            "type": "text_field",
+            "id": "name",
+            "bind": {
+              "save_to": "name"
+            },
+            "props": {
+              "placeholder": {
+                "key": "cat.name.ph"
+              },
+              "keyboard": "text"
+            }
+          },
+          {
+            "type": "number_field",
+            "id": "age",
+            "bind": {
+              "save_to": "age"
+            },
+            "props": {
+              "min": 13,
+              "max": 99,
+              "step": 1,
+              "style": "stepper",
+              "unit": "yrs"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "value": {
+                "key": "cat.energy"
+              },
+              "role": "label"
+            }
+          },
+          {
+            "type": "scale",
+            "id": "energy",
+            "bind": {
+              "save_to": "energy"
+            },
+            "props": {
+              "min": 1,
+              "max": 5,
+              "style": "smileys"
+            }
+          },
+          {
+            "type": "toggle",
+            "id": "reminders",
+            "bind": {
+              "save_to": "reminders"
+            },
+            "props": {
+              "label": {
+                "key": "cat.reminders"
+              },
+              "default": true
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "value": {
+                "key": "cat.birthday"
+              },
+              "role": "label"
+            }
+          },
+          {
+            "type": "date_field",
+            "id": "birthday",
+            "bind": {
+              "save_to": "birthday"
+            },
+            "props": {
+              "style": "calendar"
+            }
+          },
+          {
+            "type": "spacer",
+            "props": {
+              "flex": 1
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "label": {
+                "key": "cat.cta"
+              },
+              "action": "next",
+              "variant": "filled",
+              "full_width": true
+            }
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "go": "grid"
+        }
+      ]
+    },
+    {
+      "id": "grid",
+      "archetype": "custom",
+      "top_bar": {
+        "progress": "dots"
+      },
+      "root": {
+        "type": "stack",
+        "props": {
+          "direction": "column",
+          "align": "stretch",
+          "gap": 20
+        },
+        "style": {
+          "padding": 24
+        },
+        "children": [
+          {
+            "type": "text",
+            "props": {
+              "value": {
+                "key": "cat.social.title"
+              },
+              "role": "title"
+            }
+          },
+          {
+            "type": "grid",
+            "props": {
+              "columns": 2,
+              "gap": 12
+            },
+            "children": [
+              {
+                "type": "stack",
+                "props": {
+                  "direction": "column",
+                  "align": "center",
+                  "gap": 8
+                },
+                "style": {
+                  "padding": 16,
+                  "background": "surface",
+                  "radius": 14
+                },
+                "children": [
+                  {
+                    "type": "icon",
+                    "props": {
+                      "emoji": "🔥",
+                      "size": 30
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "props": {
+                      "value": "12k workouts",
+                      "role": "caption",
+                      "align": "center"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "stack",
+                "props": {
+                  "direction": "column",
+                  "align": "center",
+                  "gap": 8
+                },
+                "style": {
+                  "padding": 16,
+                  "background": "surface",
+                  "radius": 14
+                },
+                "children": [
+                  {
+                    "type": "icon",
+                    "props": {
+                      "emoji": "⭐",
+                      "size": 30
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "props": {
+                      "value": "4.9 rating",
+                      "role": "caption",
+                      "align": "center"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "stack",
+                "props": {
+                  "direction": "column",
+                  "align": "center",
+                  "gap": 8
+                },
+                "style": {
+                  "padding": 16,
+                  "background": "surface",
+                  "radius": 14
+                },
+                "children": [
+                  {
+                    "type": "icon",
+                    "props": {
+                      "name": "bolt",
+                      "size": 30,
+                      "color": "primary"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "props": {
+                      "value": "Fast results",
+                      "role": "caption",
+                      "align": "center"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "stack",
+                "props": {
+                  "direction": "column",
+                  "align": "center",
+                  "gap": 8
+                },
+                "style": {
+                  "padding": 16,
+                  "background": "surface",
+                  "radius": 14
+                },
+                "children": [
+                  {
+                    "type": "icon",
+                    "props": {
+                      "name": "heart",
+                      "size": 30,
+                      "color": "error"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "props": {
+                      "value": "Loved daily",
+                      "role": "caption",
+                      "align": "center"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "props": {
+              "value": {
+                "key": "cat.rating.q"
+              },
+              "role": "label",
+              "align": "center"
+            }
+          },
+          {
+            "type": "rating",
+            "id": "rate",
+            "bind": {
+              "save_to": "app_rating"
+            },
+            "props": {
+              "max": 5
+            }
+          },
+          {
+            "type": "photo_upload",
+            "id": "photo",
+            "bind": {
+              "save_to": "avatar"
+            },
+            "props": {
+              "prompt": "Add a progress photo",
+              "shape": "circle",
+              "source": "both"
+            }
+          },
+          {
+            "type": "spacer",
+            "props": {
+              "flex": 1
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "label": {
+                "key": "cat.cta"
+              },
+              "action": "next",
+              "variant": "filled",
+              "full_width": true
+            }
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "go": "media"
+        }
+      ]
+    },
+    {
+      "id": "media",
+      "archetype": "value_intro",
+      "top_bar": {
+        "progress": "dots"
+      },
+      "root": {
+        "type": "stack",
+        "props": {
+          "direction": "column",
+          "align": "stretch",
+          "gap": 20
+        },
+        "style": {
+          "padding": 24
+        },
+        "children": [
+          {
+            "type": "text",
+            "props": {
+              "value": {
+                "key": "cat.hero.title"
+              },
+              "role": "title",
+              "align": "center"
+            }
+          },
+          {
+            "type": "video",
+            "props": {
+              "url": "https://example.com/v.mp4",
+              "poster": "https://images.unsplash.com/photo-1594737625785-a6cbdabd333c?w=1200&q=80"
+            }
+          },
+          {
+            "type": "rich_text",
+            "props": {
+              "value": {
+                "key": "cat.rich"
+              },
+              "align": "start"
+            }
+          },
+          {
+            "type": "lottie",
+            "props": {
+              "url": "https://example.com/a.json"
+            }
+          },
+          {
+            "type": "spacer",
+            "props": {
+              "flex": 1
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "label": {
+                "key": "cat.cta"
+              },
+              "action": "next",
+              "variant": "filled",
+              "full_width": true
+            }
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "go": "swipe"
+        }
+      ]
+    },
+    {
+      "id": "swipe",
+      "archetype": "swipe_cards",
+      "top_bar": {
+        "progress": "dots"
+      },
+      "root": {
+        "type": "stack",
+        "props": {
+          "direction": "column",
+          "align": "stretch",
+          "gap": 20
+        },
+        "style": {
+          "padding": 24
+        },
+        "children": [
+          {
+            "type": "text",
+            "props": {
+              "value": {
+                "key": "cat.loading"
+              },
+              "role": "title"
+            }
+          },
+          {
+            "type": "progress",
+            "props": {
+              "style": "bar",
+              "value": 0.65
+            }
+          },
+          {
+            "type": "progress",
+            "props": {
+              "style": "steps",
+              "value": 0.5
+            }
+          },
+          {
+            "type": "swipe",
+            "id": "cards",
+            "bind": {
+              "save_to": "focus_areas"
+            },
+            "props": {
+              "on_swipe_left": "skip",
+              "on_swipe_right": "like",
+              "cards": [
+                {
+                  "value": "yoga",
+                  "content": {
+                    "type": "stack",
+                    "props": {
+                      "direction": "column",
+                      "align": "center",
+                      "gap": 12
+                    },
+                    "children": [
+                      {
+                        "type": "image",
+                        "props": {
+                          "url": "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=800&q=80",
+                          "height": 140,
+                          "radius": 12
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "props": {
+                          "value": "Morning Yoga",
+                          "role": "subtitle"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "value": "hiit",
+                  "content": {
+                    "type": "text",
+                    "props": {
+                      "value": "HIIT",
+                      "role": "subtitle"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "countdown",
+            "props": {
+              "duration_ms": 905000,
+              "style": "digits"
+            }
+          },
+          {
+            "type": "spacer",
+            "props": {
+              "flex": 1
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "label": {
+                "key": "cat.cta"
+              },
+              "action": "next",
+              "variant": "filled",
+              "full_width": true
+            }
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "go": "plan"
+        }
+      ]
+    },
+    {
+      "id": "plan",
+      "archetype": "plan_picker",
+      "top_bar": {
+        "progress": "dots"
+      },
+      "root": {
+        "type": "stack",
+        "props": {
+          "direction": "column",
+          "align": "stretch",
+          "gap": 20
+        },
+        "style": {
+          "padding": 24
+        },
+        "children": [
+          {
+            "type": "text",
+            "props": {
+              "value": {
+                "key": "cat.plan.title"
+              },
+              "role": "title"
+            }
+          },
+          {
+            "type": "plan_picker",
+            "id": "plans",
+            "bind": {
+              "save_to": "plan"
+            },
+            "props": {
+              "layout": "cards",
+              "plans": [
+                {
+                  "id": "monthly",
+                  "label": {
+                    "key": "cat.plan.monthly"
+                  },
+                  "price": "$9.99",
+                  "period": "/mo"
+                },
+                {
+                  "id": "yearly",
+                  "label": {
+                    "key": "cat.plan.yearly"
+                  },
+                  "price": "$59.99",
+                  "period": "/yr",
+                  "badge": {
+                    "key": "cat.plan.badge"
+                  },
+                  "highlighted": true
+                }
+              ]
+            }
+          },
+          {
+            "type": "permission",
+            "id": "perm",
+            "bind": {
+              "save_to": "cam_perm"
+            },
+            "props": {
+              "permission": "camera"
+            }
+          },
+          {
+            "type": "text",
+            "props": {
+              "value": {
+                "key": "cat.perm.body"
+              },
+              "role": "caption",
+              "align": "center"
+            },
+            "style": {
+              "color": "text_secondary"
+            }
+          },
+          {
+            "type": "paywall_handoff",
+            "props": {
+              "provider": "revenuecat",
+              "product_ids": [
+                "pro_monthly",
+                "pro_yearly"
+              ]
+            }
+          },
+          {
+            "type": "custom",
+            "props": {
+              "component_name": "native_reviews_widget"
+            }
+          },
+          {
+            "type": "spacer",
+            "props": {
+              "flex": 1
+            }
+          },
+          {
+            "type": "button",
+            "props": {
+              "label": {
+                "key": "cat.done"
+              },
+              "action": "end:done",
+              "variant": "filled",
+              "full_width": true
+            }
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "go": "end:done"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "id": "primitive-slice",
+  "name": "Primitive-tree vertical slice (welcome + single_choice, EN/TR)",
+  "description": "Spec v2 proof: both screens are primitive `root` trees, fully localized. Rendered identically by the web preview and the Flutter SDK from this single JSON.",
+  "entry_screen_id": "welcome",
+  "default_locale": "en",
+  "locales": [
+    "en",
+    "tr"
+  ],
+  "variables": [
+    {
+      "name": "goal",
+      "type": "string"
+    }
+  ],
+  "theme": {
+    "tokens": {
+      "colors": {
+        "primary": "#16a34a",
+        "accent": "#16a34a",
+        "background": "#ffffff",
+        "surface": "#f4f4f5",
+        "text_primary": "#0a0a0a",
+        "text_secondary": "#71717a",
+        "border": "#e4e4e7"
+      },
+      "typography": {
+        "font_family": "system",
+        "font_weight_scale": "regular"
+      },
+      "shape": {
+        "corner_radius": 14,
+        "shadow_style": "soft"
+      },
+      "spacing": {
+        "unit": 4
+      }
+    }
+  },
+  "localizations": {
+    "en": {
+      "welcome.title": "Welcome to {{app_name}}",
+      "welcome.subtitle": "Reach your goals with a plan built around you.",
+      "welcome.cta": "Get started",
+      "goal.question": "What's your main goal?",
+      "goal.opt.lose": "Lose weight",
+      "goal.opt.gain": "Build muscle",
+      "goal.opt.maintain": "Stay healthy"
+    },
+    "tr": {
+      "welcome.title": "{{app_name}}'e hoş geldin",
+      "welcome.subtitle": "Sana özel bir planla hedeflerine ulaş.",
+      "welcome.cta": "Başla",
+      "goal.question": "Ana hedefin ne?",
+      "goal.opt.lose": "Kilo ver",
+      "goal.opt.gain": "Kas yap",
+      "goal.opt.maintain": "Sağlıklı kal"
+    }
+  },
+  "screens": [
+    {
+      "id": "welcome",
+      "archetype": "welcome",
+      "top_bar": {
+        "progress": "dots"
+      },
+      "root": {
+        "type": "stack",
+        "props": {
+          "direction": "column",
+          "align": "center",
+          "justify": "center",
+          "gap": 20
+        },
+        "style": {
+          "padding": 24
+        },
+        "children": [
+          {
+            "type": "image",
+            "id": "hero",
+            "props": {
+              "url": "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=1200&q=80&auto=format&fit=crop",
+              "height": 200,
+              "radius": 20,
+              "fit": "cover"
+            }
+          },
+          {
+            "type": "text",
+            "id": "title",
+            "props": {
+              "value": {
+                "key": "welcome.title"
+              },
+              "role": "title",
+              "align": "center"
+            }
+          },
+          {
+            "type": "text",
+            "id": "subtitle",
+            "props": {
+              "value": {
+                "key": "welcome.subtitle"
+              },
+              "role": "body",
+              "align": "center"
+            },
+            "style": {
+              "color": "text_secondary"
+            }
+          },
+          {
+            "type": "spacer",
+            "props": {
+              "flex": 1
+            }
+          },
+          {
+            "type": "button",
+            "id": "cta",
+            "props": {
+              "label": {
+                "key": "welcome.cta"
+              },
+              "action": "next",
+              "variant": "filled",
+              "full_width": true
+            }
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "go": "goal"
+        }
+      ]
+    },
+    {
+      "id": "goal",
+      "archetype": "single_choice",
+      "top_bar": {
+        "progress": "dots",
+        "close": true
+      },
+      "root": {
+        "type": "stack",
+        "props": {
+          "direction": "column",
+          "align": "stretch",
+          "gap": 16
+        },
+        "style": {
+          "padding": 24
+        },
+        "children": [
+          {
+            "type": "text",
+            "id": "question",
+            "props": {
+              "value": {
+                "key": "goal.question"
+              },
+              "role": "title"
+            }
+          },
+          {
+            "type": "choice",
+            "id": "goal_choice",
+            "bind": {
+              "save_to": "goal"
+            },
+            "props": {
+              "mode": "single",
+              "layout": "list",
+              "auto_advance": true,
+              "options": [
+                {
+                  "value": "lose",
+                  "label": {
+                    "key": "goal.opt.lose"
+                  },
+                  "icon": "🔥"
+                },
+                {
+                  "value": "gain",
+                  "label": {
+                    "key": "goal.opt.gain"
+                  },
+                  "icon": "💪"
+                },
+                {
+                  "value": "maintain",
+                  "label": {
+                    "key": "goal.opt.maintain"
+                  },
+                  "icon": "🌱"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "go": "end:completed"
+        }
+      ]
+    }
+  ]
+}
