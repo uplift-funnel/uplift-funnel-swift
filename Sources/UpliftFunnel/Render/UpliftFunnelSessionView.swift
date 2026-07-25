@@ -42,13 +42,25 @@ public struct UpliftFunnelSessionView: View {
         let backgroundColor =
             theme.colors["background"].flatMap { parseCssColor($0) } ?? .white
 
+        // Direction-aware slide+fade: forward pushes the new screen in from
+        // the trailing edge while the old one exits toward the leading edge;
+        // back navigation mirrors both, so a pop visibly moves backwards.
+        let isBack = session.lastNavWasBack
+        let transition: AnyTransition = .asymmetric(
+            insertion: .move(edge: isBack ? .leading : .trailing)
+                .combined(with: .opacity),
+            removal: .move(edge: isBack ? .trailing : .leading)
+                .combined(with: .opacity))
+
         return ZStack {
             backgroundColor.color.ignoresSafeArea()
-            host(screen: screen, theme: theme)
+            // `showBack` is captured BY VALUE at screen entry: the outgoing
+            // view keeps the chevron state it was entered with instead of
+            // reacting to the shared session history flipping mid-fade (the
+            // "back button pops in before the transition" bug).
+            host(screen: screen, theme: theme, showBack: session.canGoBack)
                 .id(screen.id)
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity),
-                    removal: .opacity))
+                .transition(reduceMotion ? .opacity : transition)
         }
         .animation(
             reduceMotion ? nil : .easeOut(duration: 0.28), value: screen.id)
@@ -67,7 +79,9 @@ public struct UpliftFunnelSessionView: View {
     }
 
     @MainActor
-    private func host(screen: FunnelScreen, theme: PrimTheme) -> some View {
+    private func host(
+        screen: FunnelScreen, theme: PrimTheme, showBack: Bool
+    ) -> some View {
         let configured = UpliftFunnel.isConfigured
         let signIn: SignInHandler? = configured
             ? UpliftFunnel.lookupSignInHandler() : nil
@@ -84,6 +98,7 @@ public struct UpliftFunnelSessionView: View {
             session: session,
             primFlow: session.primFlow,
             theme: theme)
+        view.showBack = showBack
         view.onSignIn = signIn
         view.onPermission = permission
         view.onPhotoUpload = photoUpload

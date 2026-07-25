@@ -33,7 +33,10 @@ func renderTextField(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
             multiline: p["multiline"].boolValue == true,
             maxLength: p["max_length"].intValue,
             ctx: ctx,
-            onChanged: { ctx.writeVar(n.saveTo, $0) }),
+            // Per-keystroke: state only. The committed value is flushed as
+            // one variable_set on editing end / navigation.
+            onChanged: { ctx.writeVarLocal(n.saveTo, $0) },
+            onCommit: { ctx.writeVarCommit(n.saveTo, $0) }),
         n.style, ctx)
 }
 
@@ -48,8 +51,14 @@ struct TextFieldControl: View {
     let ctx: RenderCtx
     let onChanged: (String) -> Void
 
+    /// Fired once with the final text when editing ends (keyboard done /
+    /// focus loss) — the analytics commit, vs. per-keystroke `onChanged`.
+    var onCommit: ((String) -> Void)?
+
     @State private var text: String = ""
     @State private var seeded = false
+    @State private var lastCommitted = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
         Group {
@@ -67,6 +76,7 @@ struct TextFieldControl: View {
                         .foregroundColor(ctx.textPrimary.color)
                         .frame(minHeight: 72, maxHeight: 72)
                         .background(Color.clear)
+                        .focused($focused)
                 }
             } else {
                 TextField(placeholder, text: $text)
@@ -74,6 +84,8 @@ struct TextFieldControl: View {
                     .foregroundColor(ctx.textPrimary.color)
                     .modifier(KeyboardTypeModifier(keyboard: keyboard))
                     .padding(.vertical, 10)
+                    .focused($focused)
+                    .onSubmit { commit() }
             }
         }
         .padding(.horizontal, 14)
@@ -83,6 +95,7 @@ struct TextFieldControl: View {
             if !seeded {
                 seeded = true
                 text = initial
+                lastCommitted = initial
             }
         }
         .onChange(of: text) { value in
@@ -93,6 +106,15 @@ struct TextFieldControl: View {
             }
             onChanged(next)
         }
+        .onChange(of: focused) { isFocused in
+            if !isFocused { commit() }
+        }
+    }
+
+    private func commit() {
+        guard text != lastCommitted else { return }
+        lastCommitted = text
+        onCommit?(text)
     }
 }
 
@@ -195,8 +217,10 @@ struct NumberFieldFree: View {
             }
         }
         .onChange(of: text) { value in
+            // Typed digits: local write — the committed value flushes once
+            // on navigation.
             if let parsed = Double(value) {
-                ctx.writeVar(n.saveTo, formatNumber(bounds.clamp(parsed)))
+                ctx.writeVarLocal(n.saveTo, formatNumber(bounds.clamp(parsed)))
             }
         }
     }
@@ -270,6 +294,11 @@ struct BigNumberField: View {
                 .multilineTextAlignment(.center)
                 .modifier(KeyboardTypeModifier(keyboard: "number"))
                 .fixedSize()
+                .onSubmit {
+                    ctx.writeVarCommit(
+                        n.saveTo,
+                        formatNumber(bounds.clamp(Double(text) ?? (bounds.min ?? 0))))
+                }
             if !unit.isEmpty {
                 Text(unit)
                     .font(.system(size: 18))
@@ -284,8 +313,9 @@ struct BigNumberField: View {
             }
         }
         .onChange(of: text) { value in
+            // Typed digits: local write — committed on submit/navigation.
             if let parsed = Double(value) {
-                ctx.writeVar(n.saveTo, formatNumber(bounds.clamp(parsed)))
+                ctx.writeVarLocal(n.saveTo, formatNumber(bounds.clamp(parsed)))
             }
         }
     }
@@ -345,7 +375,9 @@ struct NumberFieldWheel: View {
         }
         .onChange(of: selection) { index in
             guard index >= 0, index < values.count else { return }
-            ctx.writeVar(n.saveTo, formatNumber(values[index]))
+            // Fires per wheel tick while scrolling — local write; the
+            // session flushes the settled value on navigation.
+            ctx.writeVarLocal(n.saveTo, formatNumber(values[index]))
         }
     }
 }
@@ -430,10 +462,8 @@ func renderSliderNode(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
     let minL = ctx.resolve(p["min_label"])
     let maxL = ctx.resolve(p["max_label"])
 
-    func write(_ v: Double) {
-        ctx.writeVar(
-            saveTo,
-            v == v.rounded() ? String(Int(v)) : String(format: "%.2f", v))
+    func format(_ v: Double) -> String {
+        v == v.rounded() ? String(Int(v)) : String(format: "%.2f", v)
     }
 
     return applyStyle(
@@ -446,8 +476,13 @@ func renderSliderNode(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
                 range: min...Swift.max(max, min + 0.001),
                 step: step > 0 ? step : nil,
                 tint: ctx.primary,
-                onChanged: write,
-                onEnded: { hapticSelection() })
+                // Drag path: local writes per tick, one committed
+                // variable_set when the thumb is released.
+                onChanged: { ctx.writeVarLocal(saveTo, format($0)) },
+                onEnded: { v in
+                    ctx.writeVarCommit(saveTo, format(v))
+                    hapticSelection()
+                })
             if !minL.isEmpty || !maxL.isEmpty {
                 HStack {
                     Text(minL)
@@ -470,7 +505,9 @@ struct SliderControl: View {
     let step: Double?
     let tint: RGBAColor
     let onChanged: (Double) -> Void
-    let onEnded: () -> Void
+    /// Fired with the settled value when the drag ends — the analytics
+    /// commit, vs. per-tick `onChanged`.
+    let onEnded: (Double) -> Void
 
     @State private var local: Double = 0
     @State private var seeded = false
@@ -480,11 +517,11 @@ struct SliderControl: View {
             if let step {
                 Slider(
                     value: $local, in: range, step: step,
-                    onEditingChanged: { editing in if !editing { onEnded() } })
+                    onEditingChanged: { editing in if !editing { onEnded(local) } })
             } else {
                 Slider(
                     value: $local, in: range,
-                    onEditingChanged: { editing in if !editing { onEnded() } })
+                    onEditingChanged: { editing in if !editing { onEnded(local) } })
             }
         }
         .accentColor(tint.color)

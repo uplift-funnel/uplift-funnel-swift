@@ -13,6 +13,12 @@ struct PrimitiveScreenHost: View {
     let primFlow: PrimFlow
     let theme: PrimTheme
 
+    /// Back-chevron visibility captured by the session view at screen entry.
+    /// Passed by value so an outgoing screen mid-transition keeps the state
+    /// it was entered with (reading `session.canGoBack` live would flip the
+    /// chevron on the old screen the instant history changes). Nil falls
+    /// back to the live session value (standalone hosting, tests).
+    var showBack: Bool?
     var onSignIn: ((String) async -> Bool)?
     var onPermission: ((String) async -> Bool)?
     var onPhotoUpload: ((PhotoUploadRequest) async -> String?)?
@@ -36,7 +42,7 @@ struct PrimitiveScreenHost: View {
             locale: locale,
             vars: vars,
             selections: vars,
-            canGoBack: session.canGoBack,
+            canGoBack: showBack ?? session.canGoBack,
             onAction: { session.handleAction($0) },
             // A JSON-array string coming back from the renderer is a
             // multi-select value — store the real array so transition
@@ -44,6 +50,19 @@ struct PrimitiveScreenHost: View {
             // not a serialized blob.
             onSave: { saveTo, value in
                 session.setVariable(saveTo, decodeValue(value))
+            },
+            // Typing/dragging path: same state write, no analytics event —
+            // the final value flushes as ONE variable_set on navigation or
+            // editing end.
+            onSaveLocal: { saveTo, value in
+                session.setVariableLocal(saveTo, decodeValue(value))
+            },
+            // Editing-end commit: apply the final value, then flush only
+            // this name's pending event (no-op if a navigation flush got
+            // there first).
+            onSaveCommit: { saveTo, value in
+                session.setVariableLocal(saveTo, decodeValue(value))
+                session.commitVariable(saveTo)
             },
             onSignIn: onSignIn,
             onPermission: onPermission,

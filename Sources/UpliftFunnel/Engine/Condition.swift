@@ -22,9 +22,9 @@ public func evaluateCondition(_ c: FunnelCondition, read: VariableReader) throws
 
     switch c.op {
     case .isSet:
-        return value != nil
+        return isAnswered(value)
     case .isNotSet:
-        return value == nil
+        return !isAnswered(value)
     case .eq:
         return looseEquals(value, operand)
     case .neq:
@@ -48,6 +48,17 @@ public func evaluateCondition(_ c: FunnelCondition, read: VariableReader) throws
 private func normalized(_ v: JSONValue?) -> JSONValue? {
     guard let v, !v.isNull else { return nil }
     return v
+}
+
+/// `is_set` means "the user actually answered", not "the variable was ever
+/// written": nil, an empty string, an empty array and the canonical empty
+/// multi-select encoding (`"[]"`) all read as unanswered — a text field
+/// cleared back to "" must re-lock a gated CTA. (Port of Dart `isAnswered`.)
+func isAnswered(_ value: JSONValue?) -> Bool {
+    guard let value else { return false }
+    if let s = value.stringValue, s.isEmpty || s == "[]" { return false }
+    if let list = value.arrayValue, list.isEmpty { return false }
+    return true
 }
 
 func looseEquals(_ a: JSONValue?, _ b: JSONValue?) -> Bool {

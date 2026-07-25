@@ -60,6 +60,10 @@ struct PrimitiveScreenView: View {
     var canGoBack = false
     var onAction: ((String) -> Void)?
     var onSave: ((String, String) -> Void)?
+    /// Per-keystroke save path (no analytics emit) — see `RenderCtx.onSaveLocal`.
+    var onSaveLocal: ((String, String) -> Void)?
+    /// Editing-end commit path (dirty-aware flush) — see `RenderCtx.onSaveCommit`.
+    var onSaveCommit: ((String, String) -> Void)?
     var onSignIn: ((String) async -> Bool)?
     var onPermission: ((String) async -> Bool)?
     var onPhotoUpload: ((PhotoUploadRequest) async -> String?)?
@@ -78,6 +82,8 @@ struct PrimitiveScreenView: View {
         ctx.selections = selections
         ctx.onAction = onAction
         ctx.onSave = onSave
+        ctx.onSaveLocal = onSaveLocal
+        ctx.onSaveCommit = onSaveCommit
         ctx.onSignIn = onSignIn
         ctx.onPermission = onPermission
         ctx.onPhotoUpload = onPhotoUpload

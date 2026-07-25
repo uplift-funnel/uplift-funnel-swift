@@ -313,4 +313,91 @@ final class FlowSessionTests: XCTestCase {
         XCTAssertEqual(session.currentScreen.id, "welcome")
         XCTAssertEqual(reason, "closed")
     }
+
+    // MARK: - Direction bookkeeping (port of nav_transition_test.dart)
+
+    func testLastNavWasBackResetsOnForwardNav() throws {
+        let session = try makeSession()
+        XCTAssertFalse(session.lastNavWasBack)
+        session.advance()
+        XCTAssertFalse(session.lastNavWasBack)
+        session.goBack()
+        XCTAssertTrue(session.lastNavWasBack)
+        session.advance()
+        XCTAssertFalse(session.lastNavWasBack)
+        session.handleAction("go:lose_path")
+        XCTAssertFalse(session.lastNavWasBack)
+    }
+
+    // MARK: - Keystroke coalescing (port of variable_commit_test.dart)
+
+    private func collectVariableSets(
+        _ session: FlowSession
+    ) -> () -> [(screenId: String, name: String, value: JSONValue)] {
+        var sets: [(String, String, JSONValue)] = []
+        session.addEventListener { event in
+            if case .variableSet(_, _, let screenId, let name, let value) = event {
+                sets.append((screenId, name, value))
+            }
+        }
+        return { sets }
+    }
+
+    func testLocalWritesEmitNothingUntilNavigationFlush() throws {
+        let session = try makeSession()
+        let sets = collectVariableSets(session)
+        session.advance() // -> goal_q
+
+        session.setVariableLocal("goal", "l")
+        session.setVariableLocal("goal", "lo")
+        session.setVariableLocal("goal", "lose")
+        XCTAssertTrue(sets().isEmpty,
+                      "per-keystroke writes must not emit analytics events")
+        XCTAssertEqual(session.variables["goal"], "lose")
+
+        session.advance() // flush + branch on the typed value
+        let flushed = sets()
+        XCTAssertEqual(flushed.count, 1)
+        XCTAssertEqual(flushed[0].name, "goal")
+        XCTAssertEqual(flushed[0].value, "lose")
+        XCTAssertEqual(flushed[0].screenId, "goal_q",
+                       "value attributes to the screen it was typed on")
+        XCTAssertEqual(session.currentScreen.id, "lose_path")
+    }
+
+    func testCommitVariableFlushesOnceAndNavigationAddsNothing() throws {
+        let session = try makeSession()
+        let sets = collectVariableSets(session)
+        session.advance()
+
+        session.setVariableLocal("goal", "lose")
+        session.commitVariable("goal") // editing end
+        XCTAssertEqual(sets().count, 1)
+
+        session.advance()
+        XCTAssertEqual(sets().count, 1,
+                       "navigation must not re-emit the committed value")
+    }
+
+    func testAbandonFlushesPendingTypedValue() throws {
+        let session = try makeSession()
+        let sets = collectVariableSets(session)
+        session.advance()
+        session.setVariableLocal("goal", "lose")
+        session.abandon()
+        XCTAssertEqual(sets().count, 1)
+        XCTAssertEqual(sets()[0].value, "lose")
+    }
+
+    func testCommittedWriteSupersedesPendingLocalWrites() throws {
+        let session = try makeSession()
+        let sets = collectVariableSets(session)
+        session.advance()
+        session.setVariableLocal("goal", "los")
+        session.setVariable("goal", "lose") // e.g. a choice tap on the same var
+        XCTAssertEqual(sets().count, 1)
+        session.advance()
+        XCTAssertEqual(sets().count, 1,
+                       "the committed write cleared the pending local one")
+    }
 }

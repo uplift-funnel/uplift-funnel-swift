@@ -93,6 +93,18 @@ struct RenderCtx {
     /// Called when a smart node writes a value: (save_to, value).
     var onSave: ((String, String) -> Void)?
 
+    /// Per-keystroke variant of `onSave` for typed/dragged inputs (text and
+    /// number fields, sliders): the host applies the value to session state
+    /// (so `enabled_when` gating reacts live) WITHOUT emitting an analytics
+    /// event — the committed value is flushed once on navigation or editing
+    /// end. Nil falls back to `onSave` (standalone previews, tests).
+    var onSaveLocal: ((String, String) -> Void)?
+
+    /// Editing-end commit for typed/dragged inputs: applies the final value
+    /// and flushes ITS pending analytics event only (dirty-aware — a commit
+    /// racing a navigation flush emits nothing). Nil falls back to `onSave`.
+    var onSaveCommit: ((String, String) -> Void)?
+
     /// Native auth handoff for a `signin` node. Nil (previews, tests) means
     /// the tap is treated as an immediate success.
     var onSignIn: ((String) async -> Bool)?
@@ -172,6 +184,21 @@ struct RenderCtx {
     func writeVar(_ saveTo: String?, _ value: String) {
         guard let saveTo else { return }
         onSave?(saveTo, value)
+    }
+
+    /// `writeVar` for in-progress typing/dragging: routes through
+    /// `onSaveLocal` so no analytics event fires per character — only the
+    /// committed value (flushed on navigation/editing end) is recorded.
+    func writeVarLocal(_ saveTo: String?, _ value: String) {
+        guard let saveTo else { return }
+        (onSaveLocal ?? onSave)?(saveTo, value)
+    }
+
+    /// Editing-end commit — routes through `onSaveCommit` (dirty-aware
+    /// flush) so it can never double-emit against a navigation flush.
+    func writeVarCommit(_ saveTo: String?, _ value: String) {
+        guard let saveTo else { return }
+        (onSaveCommit ?? onSave)?(saveTo, value)
     }
 
     /// Runs a button-style action string. `purchase`/`restore` are native

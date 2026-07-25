@@ -19,6 +19,19 @@ final class ConditionTests: XCTestCase {
         XCTAssertFalse(try eval(.isNotSet, stored: "x"))
     }
 
+    func testIsSetTreatsEmptyAnswersAsUnanswered() throws {
+        // A text field cleared back to "" must re-lock an is_set-gated CTA,
+        // and a fully deselected multi-choice ([] / its "[]" string form)
+        // reads the same way.
+        XCTAssertFalse(try eval(.isSet, stored: ""))
+        XCTAssertFalse(try eval(.isSet, stored: .array([])))
+        XCTAssertFalse(try eval(.isSet, stored: "[]"))
+        XCTAssertTrue(try eval(.isNotSet, stored: ""))
+        XCTAssertTrue(try eval(.isNotSet, stored: .array([])))
+        XCTAssertTrue(try eval(.isSet, stored: .array(["a"])))
+        XCTAssertTrue(try eval(.isSet, stored: "0"))
+    }
+
     func testLooseEquality() throws {
         XCTAssertTrue(try eval(.eq, value: "lose", stored: "lose"))
         XCTAssertFalse(try eval(.eq, value: "lose", stored: "gain"))

@@ -88,6 +88,16 @@ public final class FlowSession: ObservableObject {
 
     public var canGoBack: Bool { !engine.history.isEmpty && !engine.isComplete }
 
+    /// Whether the most recent screen change was a `goBack()`. The session
+    /// view reads this to mirror the slide animation on back navigation; it
+    /// resets to `false` on every forward step (advance / jump).
+    public private(set) var lastNavWasBack = false
+
+    /// Names written via `setVariableLocal` since the last flush, mapped to
+    /// the screen they were written on. Flushed to single `variableSet`
+    /// events (latest value wins) on navigation/completion.
+    private var dirtyVars: [String: String] = [:]
+
     /// Register a listener for flow events. Keep the returned token and pass
     /// it to `removeEventListener` to unsubscribe.
     @discardableResult
@@ -113,6 +123,8 @@ public final class FlowSession: ObservableObject {
             assertionFailure("\(error)")
             return
         }
+        // A committed write supersedes any pending local writes for the name.
+        dirtyVars[name] = nil
         emit(.variableSet(
             flowId: flow.id, timestamp: Date(),
             screenId: engine.currentScreenId, name: name, value: value))
@@ -120,8 +132,57 @@ public final class FlowSession: ObservableObject {
         if andAdvance { advance() }
     }
 
+    /// Set a variable WITHOUT emitting an analytics event — the
+    /// per-keystroke path for typed/dragged inputs (text, number, slider).
+    /// Engine state and `enabled_when` gating update in realtime; the single
+    /// `variableSet` for the final value is emitted on the next flush
+    /// (navigation, completion, or editing end), so analytics records what
+    /// the user submitted, not every character.
+    public func setVariableLocal(_ name: String, _ value: JSONValue) {
+        // Re-writing the already-committed value (e.g. a focus-loss commit
+        // right after a navigation flush) must not re-dirty the name — that
+        // would produce a duplicate variable_set.
+        if dirtyVars[name] == nil, engine.variables[name] == value { return }
+        do {
+            try engine.setVariable(name, value)
+        } catch {
+            assertionFailure("\(error)")
+            return
+        }
+        dirtyVars[name] = engine.currentScreenId
+        objectWillChange.send()
+    }
+
+    /// Flush the pending local write for `name` only (analytics commit on
+    /// editing end / thumb release). No-op when the name isn't dirty, so a
+    /// commit that races a navigation flush can't double-emit.
+    public func commitVariable(_ name: String) {
+        guard let screenId = dirtyVars.removeValue(forKey: name) else { return }
+        emit(.variableSet(
+            flowId: flow.id, timestamp: Date(),
+            screenId: screenId, name: name,
+            value: engine.variables[name] ?? .null))
+    }
+
+    /// Emit one `variableSet` per pending local write (latest engine value,
+    /// attributed to the screen the value was written on) and clear the set.
+    public func flushPendingVariableSets() {
+        guard !dirtyVars.isEmpty else { return }
+        let pending = dirtyVars
+        dirtyVars.removeAll()
+        for (name, screenId) in pending {
+            emit(.variableSet(
+                flowId: flow.id, timestamp: Date(),
+                screenId: screenId, name: name,
+                value: engine.variables[name] ?? .null))
+        }
+    }
+
     /// Advance based on the current screen's transition rules.
     public func advance() {
+        // Commit typed values first so ordering stays `variable_set` →
+        // `screen_changed` and the value attributes to the authoring screen.
+        flushPendingVariableSets()
         let fromId = engine.currentScreenId
         let step: EngineStep
         do {
@@ -132,14 +193,19 @@ public final class FlowSession: ObservableObject {
             assertionFailure("\(error)")
             return
         }
+        lastNavWasBack = false
         apply(step, from: fromId)
     }
 
     /// Step backwards in history. No-op if not possible.
     @discardableResult
     public func goBack() -> Bool {
+        flushPendingVariableSets()
         let ok = engine.goBack()
-        if ok { currentScreen = engine.currentScreen }
+        if ok {
+            lastNavWasBack = true
+            currentScreen = engine.currentScreen
+        }
         return ok
     }
 
@@ -170,6 +236,7 @@ public final class FlowSession: ObservableObject {
     }
 
     private func jumpTo(_ screenId: String) {
+        flushPendingVariableSets()
         let fromId = engine.currentScreenId
         let step: EngineStep
         do {
@@ -178,12 +245,14 @@ public final class FlowSession: ObservableObject {
             assertionFailure("\(error)")
             return
         }
+        lastNavWasBack = false
         apply(step, from: fromId)
     }
 
     /// End the flow immediately with `reason`, bypassing transition
     /// evaluation. Used for primitive-tree `end:<reason>` actions.
     public func complete(_ reason: String) {
+        flushPendingVariableSets()
         let step = engine.complete(reason)
         if completed { return }
         completed = true
@@ -215,6 +284,7 @@ public final class FlowSession: ObservableObject {
     /// the onboarding sheet (treated as 'abandoned' unless overridden).
     public func abandon(_ reason: String = "abandoned") {
         if completed { return }
+        flushPendingVariableSets()
         completed = true
         emit(.completed(
             flowId: flow.id, timestamp: Date(),
