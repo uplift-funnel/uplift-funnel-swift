@@ -32,6 +32,11 @@ struct EventUploaderConfig: Sendable {
     /// dropped client-side rather than triggering 401 spam.
     let apiKeyProvider: @Sendable () -> String
 
+    /// Returns the host app's bundle id, or nil when unknown. Read at flush
+    /// time and sent as `X-Uplift-Bundle-Id` so the server can pin the API
+    /// key to the app it belongs to.
+    var bundleIdProvider: (@Sendable () -> String?)?
+
     /// Read at serialize time so `identify` calls after the uploader was
     /// constructed are picked up on subsequent events.
     var userIdProvider: (@Sendable () -> String?)?
@@ -303,6 +308,9 @@ actor EventUploader {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            if let bundleId = config.bundleIdProvider?(), !bundleId.isEmpty {
+                request.setValue(bundleId, forHTTPHeaderField: "X-Uplift-Bundle-Id")
+            }
             request.httpBody = try JSONValue.object(
                 ["events": .array(batch.map { .object($0) })]
             ).serializedData()

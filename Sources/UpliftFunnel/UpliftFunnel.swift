@@ -87,6 +87,10 @@ public enum UpliftFunnel {
     ///   which app the key belongs to.
     /// - `serverUrl` — optional override for local dev / staging. Defaults
     ///   to `https://api.upliftfunnel.com`.
+    /// - `bundleId` — your app's bundle id, sent as `X-Uplift-Bundle-Id` on
+    ///   every request so the server can pin your API key to this app — a
+    ///   leaked key becomes useless anywhere else. Defaults to
+    ///   `Bundle.main.bundleIdentifier`; pass it explicitly only to override.
     ///
     /// Idempotent: calling `configure` again replaces the previous
     /// configuration but keeps the stable per-install anonymous id, so
@@ -94,10 +98,12 @@ public enum UpliftFunnel {
     public static func configure(
         apiKey: String,
         serverUrl: String? = nil,
-        appVersion: String? = nil
+        appVersion: String? = nil,
+        bundleId: String? = nil
     ) async {
         await configureInternal(
-            apiKey: apiKey, serverUrl: serverUrl, appVersion: appVersion)
+            apiKey: apiKey, serverUrl: serverUrl, appVersion: appVersion,
+            bundleId: bundleId)
     }
 
     /// Test seam: also injects the URLSession and the UserDefaults suite.
@@ -105,6 +111,7 @@ public enum UpliftFunnel {
         apiKey: String,
         serverUrl: String? = nil,
         appVersion: String? = nil,
+        bundleId: String? = nil,
         urlSession: URLSession? = nil,
         defaults: UserDefaults = .standard
     ) async {
@@ -142,6 +149,9 @@ public enum UpliftFunnel {
             s.products = previous.products
         }
         s.appVersion = appVersion
+        // Auto-detect the host bundle id (unlike Flutter, iOS can) so the
+        // server-side key pinning works without any host wiring.
+        s.bundleId = bundleId ?? Bundle.main.bundleIdentifier
         s.identity.activeApiKey = apiKey.isEmpty ? nil : apiKey
 
         // Restore persisted identity/attribution and ensure the anonymous
@@ -252,7 +262,8 @@ public enum UpliftFunnel {
         let s = try require("start")
         let url = URL(string: "\(s.serverUrl)/v1/flows/\(key)")!
         let fetched = try await s.fetcher.fetch(
-            url: url, flowId: key, apiKey: s.apiKey, forceRefresh: forceRefresh)
+            url: url, flowId: key, apiKey: s.apiKey, bundleId: s.bundleId,
+            forceRefresh: forceRefresh)
         s.lastExperimentAssignment = nil
         let session = try s.session(
             fromJson: fetched.json,
@@ -281,6 +292,7 @@ public enum UpliftFunnel {
         let url = URL(string: "\(s.serverUrl)/v1/experiments/\(key)")!
         let fetched = try await s.fetcher.fetch(
             url: url, flowId: key, apiKey: s.apiKey, subjectId: subjectId,
+            bundleId: s.bundleId,
             forceRefresh: forceRefresh,
             // Background revalidation (and the foreground response) report
             // the server's current assignment here; persist it so the next
@@ -504,6 +516,11 @@ final class FunnelState {
     var attribution: [String: String] = [:]
     var appVersion: String?
 
+    /// Host bundle id (auto-detected or passed to `configure`). Sent as
+    /// `X-Uplift-Bundle-Id` on every request so the server can pin the API
+    /// key to the app it belongs to.
+    var bundleId: String?
+
     var signInHandler: SignInHandler?
     var permissionHandler: PermissionHandler?
     var purchaseHandler: PurchaseHandler?
@@ -609,6 +626,9 @@ final class FunnelState {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        if let bundleId, !bundleId.isEmpty {
+            request.setValue(bundleId, forHTTPHeaderField: "X-Uplift-Bundle-Id")
+        }
         request.httpBody = try? JSONValue.object([
             "user_id": .string(userId),
             "anonymous_id": .string(anonymousId),
@@ -619,9 +639,13 @@ final class FunnelState {
 
     func makeUploader() -> EventUploader {
         let identity = identity
+        // Fixed at configure time (the uploader is rebuilt on every
+        // configure), so capturing the value is provider enough.
+        let bundleId = bundleId
         return EventUploader(config: EventUploaderConfig(
             endpoint: URL(string: "\(serverUrl)/v1/events")!,
             apiKeyProvider: { identity.activeApiKey ?? "" },
+            bundleIdProvider: { bundleId },
             userIdProvider: { identity.userId },
             anonymousIdProvider: { identity.anonymousId },
             contextProvider: { identity.eventContext },

@@ -220,6 +220,40 @@ final class FlowFetcherTests: XCTestCase {
         XCTAssertTrue(fired)
         XCTAssertEqual(box.value?.variantId, "var_a")
     }
+
+    // MARK: Bundle id header
+
+    func testBundleIdHeaderSentWhenConfigured() async throws {
+        stub(200, headers: ["ETag": "\"abc\""], json: flowJson)
+        _ = try await fetcher.fetch(
+            url: url, flowId: "demo", apiKey: "k",
+            bundleId: "com.example.myapp")
+        XCTAssertEqual(
+            MockURLProtocol.requests.first?.value(forHTTPHeaderField: "X-Uplift-Bundle-Id"),
+            "com.example.myapp")
+    }
+
+    func testBundleIdHeaderOmittedWhenAbsent() async throws {
+        stub(200, headers: ["ETag": "\"abc\""], json: flowJson)
+        _ = try await fetcher.fetch(url: url, flowId: "demo", apiKey: "k")
+        XCTAssertNil(
+            MockURLProtocol.requests.first?.value(forHTTPHeaderField: "X-Uplift-Bundle-Id"))
+    }
+
+    func testBundleIdHeaderCarriedByBackgroundRevalidation() async throws {
+        seedCache()
+        stub(304)
+        let result = try await fetcher.fetch(
+            url: url, flowId: "demo", apiKey: "k",
+            bundleId: "com.example.myapp")
+        XCTAssertEqual(result.source, .cache)
+        let sawHeader = await waitUntil {
+            MockURLProtocol.requests.contains {
+                $0.value(forHTTPHeaderField: "X-Uplift-Bundle-Id") == "com.example.myapp"
+            }
+        }
+        XCTAssertTrue(sawHeader)
+    }
 }
 
 /// Reference box so @Sendable callbacks can hand results back to the test.

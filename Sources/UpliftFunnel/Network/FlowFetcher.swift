@@ -151,6 +151,7 @@ public final class FlowFetcher: @unchecked Sendable {
         flowId: String,
         apiKey: String?,
         subjectId: String? = nil,
+        bundleId: String? = nil,
         forceRefresh: Bool = false,
         onAssignment: (@Sendable (UpliftFunnelExperimentAssignment) -> Void)? = nil
     ) async throws -> FetchedFlow {
@@ -162,7 +163,7 @@ public final class FlowFetcher: @unchecked Sendable {
             Task { [weak self] in
                 await self?.revalidateInBackground(
                     url: url, flowId: flowId, apiKey: apiKey,
-                    subjectId: subjectId, cached: cached,
+                    subjectId: subjectId, bundleId: bundleId, cached: cached,
                     onAssignment: onAssignment)
             }
             return FetchedFlow(
@@ -172,13 +173,14 @@ public final class FlowFetcher: @unchecked Sendable {
 
         return try await fetchAwaiting(
             url: url, flowId: flowId, apiKey: apiKey, subjectId: subjectId,
-            cached: cached, onAssignment: onAssignment)
+            bundleId: bundleId, cached: cached, onAssignment: onAssignment)
     }
 
     // MARK: - Private
 
     private func makeRequest(
-        url: URL, apiKey: String?, etag: String?, subjectId: String?
+        url: URL, apiKey: String?, etag: String?, subjectId: String?,
+        bundleId: String?
     ) -> URLRequest {
         var request = URLRequest(url: url)
         request.timeoutInterval = timeout
@@ -192,16 +194,20 @@ public final class FlowFetcher: @unchecked Sendable {
         if let subjectId, !subjectId.isEmpty {
             request.setValue(subjectId, forHTTPHeaderField: "X-Uplift-Subject-Id")
         }
+        if let bundleId, !bundleId.isEmpty {
+            request.setValue(bundleId, forHTTPHeaderField: "X-Uplift-Bundle-Id")
+        }
         return request
     }
 
     private func fetchAwaiting(
         url: URL, flowId: String, apiKey: String?, subjectId: String?,
-        cached: CachedFlow?,
+        bundleId: String?, cached: CachedFlow?,
         onAssignment: (@Sendable (UpliftFunnelExperimentAssignment) -> Void)?
     ) async throws -> FetchedFlow {
         let request = makeRequest(
-            url: url, apiKey: apiKey, etag: cached?.etag, subjectId: subjectId)
+            url: url, apiKey: apiKey, etag: cached?.etag, subjectId: subjectId,
+            bundleId: bundleId)
 
         let data: Data
         let response: HTTPURLResponse
@@ -283,11 +289,12 @@ public final class FlowFetcher: @unchecked Sendable {
     /// cache on 200, leaves it alone on 304, and never throws.
     private func revalidateInBackground(
         url: URL, flowId: String, apiKey: String?, subjectId: String?,
-        cached: CachedFlow,
+        bundleId: String?, cached: CachedFlow,
         onAssignment: (@Sendable (UpliftFunnelExperimentAssignment) -> Void)?
     ) async {
         let request = makeRequest(
-            url: url, apiKey: apiKey, etag: cached.etag, subjectId: subjectId)
+            url: url, apiKey: apiKey, etag: cached.etag, subjectId: subjectId,
+            bundleId: bundleId)
         do {
             let (data, r) = try await session.data(for: request)
             guard let response = r as? HTTPURLResponse else { return }
