@@ -1,31 +1,30 @@
 # UpliftFunnel iOS SDK
 
-Native SwiftUI SDK for [Uplift Funnel](https://upliftfunnel.com) — render
-server-authored onboarding funnels and paywalls as native iOS UI from a
-single JSON contract. Full behavioral parity with `uplift_funnel_flutter`
-(the reference SDK): same primitive-tree renderer, same flow engine, same
-caching/ETag strategy, same analytics wire format.
+Native SwiftUI SDK for [Uplift Funnel](https://upliftfunnel.com). Build an
+onboarding flow or paywall in the dashboard, show it with one view, and change
+it later without shipping an app update.
 
-- **JSON-to-native**: the API serves a server-expanded primitive tree
-  (stack/text/image/button/choice/plan_picker/… — 31 node types); the SDK is
-  a dumb interpreter. New archetypes reach installed apps with no update.
-- **Forward-compatible**: unknown node types render a neutral placeholder,
-  unknown props are ignored (see `docs/sdk-compatibility.md` in the platform
-  repo).
-- **Offline-first**: cache-first with background ETag revalidation; flows
-  open instantly from cache and refresh for next launch.
-- **Full-funnel analytics**: durable event queue (survives app kill),
-  batched uploads with backoff, experiment tagging, purchase funnel events.
-- Zero third-party dependencies. iOS 15+, Swift Package Manager.
+- **Native UI** — real SwiftUI, no WebView.
+- **Opens instantly, works offline** — a flow the user has seen before renders
+  from cache and refreshes in the background for next launch.
+- **Survives new flows** — a flow using something this SDK version doesn't know
+  degrades gracefully instead of breaking the screen.
+- **Analytics and A/B built in** — nothing is lost if the app is killed or the
+  device is offline.
+- No third-party dependencies. iOS 15+, Swift Package Manager.
 
 ## Install
 
 ```swift
 // Package.swift
-.package(path: "../funnel-ios"),  // or the git URL once published
+.package(url: "https://github.com/uplift-funnel/uplift-funnel-swift.git", from: "0.5.0"),
 // target dependency:
-.product(name: "UpliftFunnel", package: "funnel-ios")
+.product(name: "UpliftFunnel", package: "uplift-funnel-swift")
 ```
+
+The repository is private while the SDK is in design-partner use, so the URL
+above resolves only for accounts that have been granted access. Ask us and we'll
+add you.
 
 ## Quickstart
 
@@ -116,10 +115,10 @@ try await UpliftFunnel.track("first_workout_completed")
 | `UpliftFunnelFlowView(session:)` | `UpliftFunnelSessionView(session:)` |
 | `UpliftFunnelFlowResult` | `UpliftFunnelFlowResult` (same fields) |
 | `Flow` / `Condition` / `Transition` | `FunnelFlow` / `FunnelCondition` / `FunnelTransition` |
-| SharedPreferences `funnel.*` keys | UserDefaults, same key names |
 
-Storage keys, event wire shapes, cache format, and condition semantics are
-byte-for-byte compatible with the Flutter SDK.
+The two SDKs behave identically, so a flow you build once behaves the same on
+both — useful if you ship a Flutter app and a native iOS app against the same
+dashboard.
 
 ## Example app
 
@@ -155,13 +154,11 @@ enabled_when, plan parsing, purchase funnel, pinned-CTA extraction).
 Fixtures under `Tests/UpliftFunnelTests/Fixtures/` are copied from the
 Flutter SDK's `test/fixtures/` — re-sync when the schema package changes.
 
-## Known v1 limitations (parity-tracked with Flutter 0.5.x)
+## Known limitations
 
-- **Lottie** renders a static placeholder (Flutter does the same).
+- **Lottie** renders a static placeholder.
 - **Custom fonts**: `font_family` aliases (`system`/`serif`/`mono`) map to
   system designs; any other family renders iff the host app bundles a font
   with that name. No runtime Google Fonts download yet.
-- `justify: between/around` and proportional multi-`flex` are approximated
-  with SwiftUI spacers; exotic layouts may differ slightly from the Flutter
-  goldens.
-- No snapshot tests yet — the Flutter goldens are the visual reference.
+- Unusual layout combinations may render slightly differently from the Flutter
+  SDK; the common cases match.
