@@ -211,6 +211,32 @@ private func choiceTileFill(
     return ctx.surface.color
 }
 
+/// Per-slot typography override from `choice.props.typography` (`label` /
+/// `description` — same shape as plan_picker slots). Fields left unset keep
+/// the layout's hardcoded defaults, so flows without overrides render
+/// byte-identically.
+private struct ChoiceTypo {
+    let font: Font
+    let color: Color
+
+    init(
+        _ n: PrimNode, _ ctx: RenderCtx, _ slot: String,
+        size: Double, weight: Font.Weight, color: Color
+    ) {
+        let t = n.props["typography"][slot]
+        let resolvedSize = t["size"].doubleValue ?? size
+        let resolvedWeight = fontWeight(from: t["weight"].stringValue, fallback: weight)
+        if let family = t["fontFamily"].stringValue {
+            font = primFont(
+                family: resolveFontFamilyAlias(family),
+                size: resolvedSize, weight: resolvedWeight, italic: false)
+        } else {
+            font = .system(size: resolvedSize, weight: resolvedWeight)
+        }
+        self.color = t["color"].stringValue.map { ctx.color($0).color } ?? color
+    }
+}
+
 /// layout `list` (default) — full-width rows, icon + label.
 @MainActor
 func renderChoiceList(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
@@ -218,6 +244,8 @@ func renderChoiceList(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
     let selected = ChoiceSelection(n, ctx)
     let (styleBg, radii, restStyle) = choiceChrome(n, ctx)
     let shape = RoundedCornersShape(radii: radii)
+    let labelTypo = ChoiceTypo(
+        n, ctx, "label", size: 16, weight: .medium, color: ctx.textPrimary.color)
 
     return AnyView(
         VStack(spacing: 10) {
@@ -233,8 +261,8 @@ func renderChoiceList(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
                                 Text(icon).font(.system(size: 20))
                             }
                             Text(opt.label)
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(ctx.textPrimary.color)
+                                .font(labelTypo.font)
+                                .foregroundColor(labelTypo.color)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding(.horizontal, 16)
@@ -257,6 +285,8 @@ func renderChoiceGrid(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
     let (styleBg, radii, restStyle) = choiceChrome(n, ctx)
     let shape = RoundedCornersShape(radii: radii)
     let rowCount = (options.count + 1) / 2
+    let labelTypo = ChoiceTypo(
+        n, ctx, "label", size: 15, weight: .medium, color: ctx.textPrimary.color)
 
     func tile(_ index: Int) -> AnyView {
         guard index < options.count else { return AnyView(Color.clear) }
@@ -271,9 +301,9 @@ func renderChoiceGrid(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
                         Text(icon).font(.system(size: 28))
                     }
                     Text(opt.label)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(labelTypo.font)
                         .multilineTextAlignment(.center)
-                        .foregroundColor(ctx.textPrimary.color)
+                        .foregroundColor(labelTypo.color)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 18)
@@ -311,6 +341,11 @@ func renderChoiceChip(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
         ) { _, optJson in
             let opt = ChoiceOptionData(optJson, ctx)
             let isSel = selected.contains(opt.value)
+            // Base color keeps the chip's selected-state flip unless the
+            // author pinned an explicit label color.
+            let labelTypo = ChoiceTypo(
+                n, ctx, "label", size: 14, weight: .medium,
+                color: isSel ? ctx.primary.color : ctx.textPrimary.color)
             applyStyle(
                     Button {
                         selectChoice(ctx, n, opt.value)
@@ -320,9 +355,8 @@ func renderChoiceChip(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
                                 Text(icon).font(.system(size: 15))
                             }
                             Text(opt.label)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(
-                                    isSel ? ctx.primary.color : ctx.textPrimary.color)
+                                .font(labelTypo.font)
+                                .foregroundColor(labelTypo.color)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 9)
@@ -345,6 +379,11 @@ func renderChoiceCard(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
     let selected = ChoiceSelection(n, ctx)
     let (styleBg, radii, restStyle) = choiceChrome(n, ctx)
     let shape = RoundedCornersShape(radii: radii)
+    let labelTypo = ChoiceTypo(
+        n, ctx, "label", size: 16, weight: .semibold, color: ctx.textPrimary.color)
+    let descriptionTypo = ChoiceTypo(
+        n, ctx, "description", size: 13, weight: .regular,
+        color: ctx.textSecondary.color)
 
     return AnyView(
         VStack(spacing: 10) {
@@ -361,12 +400,12 @@ func renderChoiceCard(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
                             }
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(opt.label)
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(ctx.textPrimary.color)
+                                    .font(labelTypo.font)
+                                    .foregroundColor(labelTypo.color)
                                 if !opt.description.isEmpty {
                                     Text(opt.description)
-                                        .font(.system(size: 13))
-                                        .foregroundColor(ctx.textSecondary.color)
+                                        .font(descriptionTypo.font)
+                                        .foregroundColor(descriptionTypo.color)
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -396,6 +435,9 @@ func renderChoiceImageCard(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
         guard index < options.count else { return AnyView(Color.clear) }
         let opt = ChoiceOptionData(options[index], ctx)
         let isSel = selected.contains(opt.value)
+        let labelTypo = ChoiceTypo(
+            n, ctx, "label", size: 15, weight: .semibold,
+            color: opt.imageUrl != nil ? .white : ctx.textPrimary.color)
         return applyStyle(
             Button {
                 selectChoice(ctx, n, opt.value)
@@ -413,9 +455,8 @@ func renderChoiceImageCard(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
                         ctx.surface.color
                     }
                     Text(opt.label)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(
-                            opt.imageUrl != nil ? .white : ctx.textPrimary.color)
+                        .font(labelTypo.font)
+                        .foregroundColor(labelTypo.color)
                         .padding(10)
                 }
                 .frame(height: 120)
@@ -446,6 +487,8 @@ func renderChoiceEmoji(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
     let selected = ChoiceSelection(n, ctx)
     let (styleBg, radii, restStyle) = choiceChrome(n, ctx)
     let shape = RoundedCornersShape(radii: radii)
+    let labelTypo = ChoiceTypo(
+        n, ctx, "label", size: 12, weight: .medium, color: ctx.textPrimary.color)
 
     return AnyView(
         WrapHStack(
@@ -461,9 +504,9 @@ func renderChoiceEmoji(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
                         Text((opt.icon?.isEmpty == false) ? opt.icon! : "•")
                             .font(.system(size: 32))
                         Text(opt.label)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(labelTypo.font)
                             .multilineTextAlignment(.center)
-                            .foregroundColor(ctx.textPrimary.color)
+                            .foregroundColor(labelTypo.color)
                     }
                     .padding(.horizontal, 4)
                     .padding(.vertical, 12)
