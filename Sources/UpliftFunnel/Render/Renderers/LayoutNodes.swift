@@ -50,9 +50,24 @@ func renderStack(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
                 maxHeight: isRow ? nil : .infinity))
         }
         if stretch {
+            // CSS `align-items: stretch` fills the child's cross axis; the
+            // CHILD's own justify positions its content inside that box. Now
+            // that row texts hug (no .infinity frames), a hugging row child
+            // would otherwise center inside the stretch frame — pin it per
+            // its own justify instead.
+            let alignment: Alignment
+            if child.type == "stack" {
+                alignment = stackFrameAlignment(
+                    align: child.props["align"].stringValue,
+                    justify: child.props["justify"].stringValue ?? "start",
+                    isRow: (child.props["direction"].stringValue ?? "column") == "row")
+            } else {
+                alignment = .center
+            }
             view = AnyView(view.frame(
                 maxWidth: isRow ? nil : .infinity,
-                maxHeight: isRow ? .infinity : nil))
+                maxHeight: isRow ? .infinity : nil,
+                alignment: alignment))
         }
         return view
     }

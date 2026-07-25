@@ -65,11 +65,20 @@ func renderText(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
         Text(markdownLite(raw, base: base))
             .multilineTextAlignment(align)
             .lineSpacing(lineSpacing(size: base.size, multiplier: heightMultiplier))
-            .lineLimit(maxLines)
-            .frame(
-                maxWidth: .infinity,
-                alignment: frameAlignment(
-                    p["align"].stringValue ?? ctx.screenStyle.textAlign)))
+            .lineLimit(maxLines))
+    if ctx.parentAxis == .horizontal {
+        // In a row, text hugs its content width (CSS `flex: 0 1 auto`):
+        // expanding to .infinity would make a short "✓" glyph split the row
+        // 50/50 with its sibling and squeeze the long text (the pup-academy
+        // paywall bug). fixedSize(vertical) lets long text wrap onto more
+        // lines instead of truncating with an ellipsis.
+        view = AnyView(view.fixedSize(horizontal: false, vertical: true))
+    } else {
+        view = AnyView(view.frame(
+            maxWidth: .infinity,
+            alignment: frameAlignment(
+                p["align"].stringValue ?? ctx.screenStyle.textAlign)))
+    }
     if let shadow {
         view = AnyView(view.shadow(
             color: shadow.color.color, radius: shadow.blur / 2,
