@@ -19,11 +19,18 @@ func findPlanSaveTo(_ node: PrimNode) -> String? {
     return nil
 }
 
-/// Depth-first collects `button` nodes with `props.pin_bottom == true` and
-/// returns the tree without them. Carousel/swipe subtrees are left intact —
-/// a slide-local CTA can't meaningfully pin to the screen.
+/// Node types whose props carry `pin_bottom` (schema: the `Pinnable` mixin).
+///
+/// `signin` joined `button` because the `buttons_bottom` layout only puts a
+/// flexible spacer above the provider buttons, which stops holding them down
+/// the moment the content outgrows the viewport.
+private let pinnableTypes: Set<String> = ["button", "signin"]
+
+/// Depth-first collects nodes with `props.pin_bottom == true` and returns the
+/// tree without them. Carousel/swipe subtrees are left intact — a slide-local
+/// CTA can't meaningfully pin to the screen.
 func extractPinned(_ node: PrimNode) -> (kept: PrimNode?, pinned: [PrimNode]) {
-    if node.type == "button", node.props["pin_bottom"].boolValue == true {
+    if pinnableTypes.contains(node.type), node.props["pin_bottom"].boolValue == true {
         return (nil, [node])
     }
     if node.children.isEmpty || node.type == "carousel" || node.type == "swipe" {
@@ -268,14 +275,27 @@ struct ChromeBar: View {
     let onAction: ((String) -> Void)?
 
     var body: some View {
-        let progress = topBar["progress"].stringValue
+        // `progress` is a bare style name OR the object form; normalize once.
+        // Mirrors progressIndicatorOf in @funnel/schema — the three renderers
+        // must agree on what a bare string means.
+        let spec = progressSpec
+        let style = spec["style"].stringValue
         let close = topBar["close"].boolValue == true
         let skipLabel = topBar["skip"]["label"].stringValue
+        let title = topBar["title"].stringValue
         // Back shows only when the session can navigate back AND the screen
         // hasn't opted out via `top_bar.back = false`.
         let showBack = canGoBack && topBar["back"].boolValue != false
-        let hasAffordance = showBack || close || (skipLabel?.isEmpty == false)
-        let indicatorView = indicator(progress)
+        let hasAffordance =
+            showBack || close || (skipLabel?.isEmpty == false) || (title?.isEmpty == false)
+
+        let controls = topBar["controls"]
+        let glyphColor = resolveColor(controls["color"].stringValue) ?? text
+        let glyphSize = controls["size"].doubleValue
+        let indicatorView = indicator(spec, style)
+        // `below_bar` gives the indicator its own line under the affordance
+        // row, which is what a titled app bar usually wants.
+        let below = indicatorView != nil && spec["position"].stringValue == "below_bar"
 
         if indicatorView == nil && !hasAffordance {
             Spacer().frame(height: 20)
@@ -285,41 +305,95 @@ struct ChromeBar: View {
             indicatorView
                 .padding(EdgeInsets(top: 16, leading: 12, bottom: 8, trailing: 12))
         } else {
-            ZStack {
-                if let indicatorView {
-                    indicatorView.padding(.horizontal, 56)
+            VStack(spacing: 0) {
+                ZStack {
+                    if let indicatorView, !below {
+                        indicatorView.padding(.horizontal, 56)
+                    } else if let title, !title.isEmpty {
+                        Text(title)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(glyphColor.color)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .padding(.horizontal, 56)
+                    }
+                    HStack {
+                        if showBack {
+                            chromeButton {
+                                onAction?("back")
+                            } label: {
+                                glyph(
+                                    override: controls["back_icon"].stringValue,
+                                    systemName: "chevron.left",
+                                    size: glyphSize ?? 16,
+                                    weight: .semibold,
+                                    color: glyphColor)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                        if close {
+                            chromeButton {
+                                onAction?("end:abandoned")
+                            } label: {
+                                glyph(
+                                    override: controls["close_icon"].stringValue,
+                                    systemName: "xmark",
+                                    size: glyphSize ?? 16,
+                                    weight: .medium,
+                                    color: glyphColor)
+                            }
+                        } else if let skipLabel, !skipLabel.isEmpty {
+                            chromeButton {
+                                onAction?("next")
+                            } label: {
+                                Text(skipLabel)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(glyphColor.color)
+                            }
+                        }
+                    }
                 }
-                HStack {
-                    if showBack {
-                        chromeButton {
-                            onAction?("back")
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(text.color)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    if close {
-                        chromeButton {
-                            onAction?("end:abandoned")
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(text.color)
-                        }
-                    } else if let skipLabel, !skipLabel.isEmpty {
-                        chromeButton {
-                            onAction?("next")
-                        } label: {
-                            Text(skipLabel)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(text.color)
-                        }
-                    }
+                .frame(height: 44)
+                if let indicatorView, below {
+                    indicatorView
+                        .padding(EdgeInsets(top: 0, leading: 12, bottom: 8, trailing: 12))
                 }
             }
-            .frame(height: 44)
+        }
+    }
+
+    /// Normalizes `top_bar.progress` — a bare style name or the object form.
+    private var progressSpec: JSONValue {
+        let raw = topBar["progress"]
+        if let style = raw.stringValue { return .object(["style": .string(style)]) }
+        return raw
+    }
+
+    /// A theme token name or raw hex → a colour, or nil to inherit.
+    private func resolveColor(_ ref: String?) -> RGBAColor? {
+        guard let ref, !ref.isEmpty else { return nil }
+        switch ref {
+        case "primary", "accent": return accent
+        case "border": return line
+        case "text_primary", "text_secondary": return text
+        default: return parseCssColor(ref)
+        }
+    }
+
+    /// An author-supplied character, or the platform-standard SF Symbol.
+    @ViewBuilder
+    private func glyph(
+        override: String?, systemName: String, size: Double, weight: Font.Weight,
+        color: RGBAColor
+    ) -> some View {
+        if let override, !override.isEmpty {
+            Text(override)
+                .font(.system(size: size, weight: weight))
+                .foregroundColor(color.color)
+        } else {
+            Image(systemName: systemName)
+                .font(.system(size: size, weight: weight))
+                .foregroundColor(color.color)
         }
     }
 
@@ -334,48 +408,62 @@ struct ChromeBar: View {
         .buttonStyle(.plain)
     }
 
-    private func indicator(_ progress: String?) -> AnyView? {
-        switch progress {
+    private func indicator(_ spec: JSONValue, _ style: String?) -> AnyView? {
+        // Author overrides, falling back to what was hardcoded before.
+        let fill = resolveColor(spec["color"].stringValue) ?? accent
+        let track = resolveColor(spec["track_color"].stringValue) ?? line
+        let thickness = spec["thickness"].doubleValue
+        let maxMarkers = spec["max_markers"].intValue ?? 6
+        // Derived from the screen's position unless the author said otherwise —
+        // a branch or a resumed onboarding shows a slice, not the whole flow.
+        let idxBase = spec["index_override"].intValue ?? index
+        let tot = spec["total_override"].intValue ?? total
+
+        switch style {
         case "dots", "dashes":
-            let isDash = progress == "dashes"
-            let count = min(total, 6)
-            let idx = min(max(index, 0), count - 1)
+            let isDash = style == "dashes"
+            let count = min(tot, maxMarkers)
+            if count <= 0 { return nil }
+            let idx = min(max(idxBase, 0), count - 1)
+            let size = thickness ?? (isDash ? 3 : 6)
             return AnyView(
                 HStack(spacing: 4) {
                     ForEach(0..<count, id: \.self) { i in
                         Capsule()
-                            .fill(i <= idx ? accent.color : line.color)
-                            .frame(width: isDash ? 16 : 6, height: isDash ? 3 : 6)
+                            .fill(i <= idx ? fill.color : track.color)
+                            .frame(width: isDash ? 16 : size, height: size)
                     }
                 }
                 .frame(maxWidth: .infinity))
         case "bar":
-            let fraction = Double(index + 1) / Double(total == 0 ? 1 : total)
+            let fraction = Double(idxBase + 1) / Double(tot == 0 ? 1 : tot)
             return AnyView(
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(line.color)
+                        Capsule().fill(track.color)
                         Capsule()
-                            .fill(accent.color)
+                            .fill(fill.color)
                             .frame(width: proxy.size.width * fraction)
                     }
                 }
-                .frame(height: 4))
+                .frame(height: thickness ?? 4))
         case "numbered":
             return AnyView(
-                Text("\(index + 1) / \(total)")
+                Text("\(idxBase + 1) / \(tot)")
                     .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                    .foregroundColor(text.color)
+                    // `color` names the ACTIVE colour in every other style, so
+                    // honouring it here keeps one meaning across all of them.
+                    .foregroundColor((spec["color"].stringValue != nil ? fill : text).color)
                     .frame(maxWidth: .infinity))
         case "steps":
             // Segmented stepper — every screen gets a segment, filled up to
             // the current one (Duolingo / story style).
             return AnyView(
                 HStack(spacing: 4) {
-                    ForEach(0..<max(total, 1), id: \.self) { i in
+                    ForEach(0..<max(tot, 1), id: \.self) { i in
                         Capsule()
-                            .fill(i <= index ? accent.color : line.color)
-                            .frame(height: 4)
+                            .fill(i <= idxBase ? fill.color : track.color)
+                            .frame(height: thickness ?? 4)
                             .frame(maxWidth: .infinity)
                     }
                 })

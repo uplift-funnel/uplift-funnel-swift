@@ -176,7 +176,9 @@ func selectChoice(_ ctx: RenderCtx, _ n: PrimNode, _ value: String) {
     }
 }
 
-private struct ChoiceOptionData {
+/// Internal rather than private so the render-logic tests can assert on it,
+/// matching `ChoiceSelection` and `extractPinned` in the same suite.
+struct ChoiceOptionData {
     let label: String
     let description: String
     let icon: String?
@@ -246,6 +248,9 @@ func renderChoiceList(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
     let shape = RoundedCornersShape(radii: radii)
     let labelTypo = ChoiceTypo(
         n, ctx, "label", size: 16, weight: .medium, color: ctx.textPrimary.color)
+    let descTypo = ChoiceTypo(
+        n, ctx, "description", size: 13, weight: .regular,
+        color: ctx.textSecondary.color)
 
     return AnyView(
         VStack(spacing: 10) {
@@ -256,14 +261,24 @@ func renderChoiceList(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
                     Button {
                         selectChoice(ctx, n, opt.value)
                     } label: {
-                        HStack(spacing: 12) {
+                        // A row with two lines of text reads better
+                        // top-aligned; a single-line row still centres
+                        // against its icon.
+                        HStack(alignment: opt.description.isEmpty ? .center : .top, spacing: 12) {
                             if let icon = opt.icon, !icon.isEmpty {
                                 Text(icon).font(.system(size: 20))
                             }
-                            Text(opt.label)
-                                .font(labelTypo.font)
-                                .foregroundColor(labelTypo.color)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(opt.label)
+                                    .font(labelTypo.font)
+                                    .foregroundColor(labelTypo.color)
+                                if !opt.description.isEmpty {
+                                    Text(opt.description)
+                                        .font(descTypo.font)
+                                        .foregroundColor(descTypo.color)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 14)
@@ -287,6 +302,9 @@ func renderChoiceGrid(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
     let rowCount = (options.count + 1) / 2
     let labelTypo = ChoiceTypo(
         n, ctx, "label", size: 15, weight: .medium, color: ctx.textPrimary.color)
+    let descTypo = ChoiceTypo(
+        n, ctx, "description", size: 12, weight: .regular,
+        color: ctx.textSecondary.color)
 
     func tile(_ index: Int) -> AnyView {
         guard index < options.count else { return AnyView(Color.clear) }
@@ -296,7 +314,7 @@ func renderChoiceGrid(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
             Button {
                 selectChoice(ctx, n, opt.value)
             } label: {
-                VStack(spacing: 8) {
+                VStack(spacing: opt.description.isEmpty ? 8 : 4) {
                     if let icon = opt.icon, !icon.isEmpty {
                         Text(icon).font(.system(size: 28))
                     }
@@ -304,6 +322,12 @@ func renderChoiceGrid(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
                         .font(labelTypo.font)
                         .multilineTextAlignment(.center)
                         .foregroundColor(labelTypo.color)
+                    if !opt.description.isEmpty {
+                        Text(opt.description)
+                            .font(descTypo.font)
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(descTypo.color)
+                    }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 18)
@@ -438,6 +462,11 @@ func renderChoiceImageCard(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
         let labelTypo = ChoiceTypo(
             n, ctx, "label", size: 15, weight: .semibold,
             color: opt.imageUrl != nil ? .white : ctx.textPrimary.color)
+        let descTypo = ChoiceTypo(
+            n, ctx, "description", size: 12, weight: .regular,
+            // On a photo the scrim is dark, so the muted palette colour
+            // disappears — step down from white instead.
+            color: opt.imageUrl != nil ? Color.white.opacity(0.82) : ctx.textSecondary.color)
         return applyStyle(
             Button {
                 selectChoice(ctx, n, opt.value)
@@ -454,10 +483,17 @@ func renderChoiceImageCard(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
                     } else {
                         ctx.surface.color
                     }
-                    Text(opt.label)
-                        .font(labelTypo.font)
-                        .foregroundColor(labelTypo.color)
-                        .padding(10)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(opt.label)
+                            .font(labelTypo.font)
+                            .foregroundColor(labelTypo.color)
+                        if !opt.description.isEmpty {
+                            Text(opt.description)
+                                .font(descTypo.font)
+                                .foregroundColor(descTypo.color)
+                        }
+                    }
+                    .padding(10)
                 }
                 .frame(height: 120)
                 .frame(maxWidth: .infinity)
