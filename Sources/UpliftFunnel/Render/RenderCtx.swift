@@ -223,6 +223,17 @@ struct RenderCtx {
             if restored { onAction?("next") }
             return
         }
+        // `permission:<type>` requests an OS permission through the same host
+        // handler the permission node uses (`onPermission`), then advances via
+        // the default transition — so a plain button can ask for a permission.
+        // It does not save the grant (use a permission node to store/branch on
+        // it). No handler ⇒ plain advance, matching how the node degrades.
+        if action.hasPrefix("permission:") {
+            let type = String(action.dropFirst("permission:".count))
+            _ = await onPermission?(type)
+            onAction?("next")
+            return
+        }
         onAction?(action)
     }
 
@@ -232,7 +243,16 @@ struct RenderCtx {
     func color(_ ref: String?, fallback: RGBAColor = .transparent) -> RGBAColor {
         guard let ref, !ref.isEmpty else { return fallback }
         if let accent = screenStyle.accent, ref == "primary" || ref == "accent" {
-            return parseCssColor(accent) ?? fallback
+            // The override may itself be a TOKEN NAME rather than a literal
+            // color — `plan_picker.props.accent: "primary"` is the common
+            // case. Resolve it through the theme before giving up, or the
+            // lookup silently lands on `fallback` (the reference green) and
+            // paints a selected plan card off-brand.
+            if let parsed = parseCssColor(accent) { return parsed }
+            if let token = theme.colors[accent], let parsed = parseCssColor(token) {
+                return parsed
+            }
+            return fallback
         }
         let token = theme.colors[ref]
         return parseCssColor(token ?? ref) ?? fallback

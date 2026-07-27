@@ -41,6 +41,7 @@ func renderNode(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
     case "countdown": return renderCountdown(n, ctx)
     case "testimonial": return renderTestimonial(n, ctx)
     case "timeline": return renderTimeline(n, ctx)
+    case "compare": return renderCompare(n, ctx)
     // §3.5 behavioral / native
     case "permission": return renderPermission(n, ctx)
     case "signin": return renderSignIn(n, ctx)

@@ -108,7 +108,9 @@
       "cat.rich": "Your **personalized** program is ready.\n\nWe combined *cardio*, strength and recovery into one weekly rhythm.",
       "cat.loading": "Building your plan",
       "cat.perm.body": "We use the camera for progress photos.",
-      "cat.done": "Start now"
+      "cat.done": "Start now",
+      "cat.compare.before": "Before",
+      "cat.compare.after": "After"
     },
     "tr": {
       "cat.q": "Neye odaklanalım?",
@@ -137,7 +139,9 @@
       "cat.rich": "**Kişiselleştirilmiş** programın hazır.\n\n*Kardiyo*, güç ve toparlanmayı tek bir haftalık ritme yerleştirdik.",
       "cat.loading": "Planın hazırlanıyor",
       "cat.perm.body": "İlerleme fotoğrafları için kamerayı kullanıyoruz.",
-      "cat.done": "Hemen başla"
+      "cat.done": "Hemen başla",
+      "cat.compare.before": "Önce",
+      "cat.compare.after": "Sonra"
     }
   },
   "screens": [
@@ -696,6 +700,24 @@
             "type": "lottie",
             "props": {
               "url": "https://example.com/a.json"
+            }
+          },
+          {
+            "type": "compare",
+            "id": "compare",
+            "props": {
+              "before_url": "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=800&q=80",
+              "after_url": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&q=80",
+              "before_label": {
+                "key": "cat.compare.before"
+              },
+              "after_label": {
+                "key": "cat.compare.after"
+              },
+              "mode": "horizontal",
+              "initial_position": 0.5,
+              "height": 130,
+              "radius": 12
             }
           },
           {

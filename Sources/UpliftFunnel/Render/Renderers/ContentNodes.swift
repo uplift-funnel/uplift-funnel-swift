@@ -147,12 +147,8 @@ func renderImage(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
             .frame(height: height.map { CGFloat($0) })
             .clipped())
 
-    if height == nil, let ratio = p["ratio"].stringValue {
-        let parts = ratio.split(separator: ":")
-        if parts.count == 2,
-           let w = Double(parts[0]), let h = Double(parts[1]), h != 0 {
-            img = AnyView(img.aspectRatio(w / h, contentMode: .fit))
-        }
+    if height == nil, let ratio = parseRatio(p["ratio"].stringValue) {
+        img = AnyView(img.aspectRatio(ratio, contentMode: .fit))
     }
     if radius > 0 {
         img = AnyView(img.clipShape(RoundedRectangle(cornerRadius: radius)))
@@ -247,41 +243,74 @@ func gradientBox(_ ctx: RenderCtx) -> some View {
 
 // MARK: - progress
 
+/// Fires the screen's default transition once, `durationMs` after it appears,
+/// and renders its content unchanged.
+struct AdvanceAfter: View {
+    let durationMs: Int
+    let ctx: RenderCtx
+    let content: AnyView
+
+    @State private var fired = false
+
+    var body: some View {
+        content.task {
+            guard !fired else { return }
+            fired = true
+            let ns = UInt64(max(0, min(durationMs, 600_000))) * 1_000_000
+            try? await Task.sleep(nanoseconds: ns)
+            guard !Task.isCancelled else { return }
+            ctx.onAction?("next")
+        }
+    }
+}
+
 @MainActor
 func renderProgress(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
     let p = n.props
     let style = p["style"].stringValue ?? "bar"
     let value = p["value"].doubleValue ?? 0.6
 
+    // spinner/percentage/steps draw no completion of their own, so they cannot
+    // fire `advance_on_complete` the way the bar and the checklist do — and a
+    // loading screen built on one is usually its screen's ONLY exit. Time it
+    // out instead, or the screen is a dead end.
+    let selfAdvancing = style == "bar" || style == "animated_list"
+    let needsTimeout = p["advance_on_complete"].boolValue == true && !selfAdvancing
+    func timed<V: View>(_ body: V) -> AnyView {
+        guard needsTimeout else { return AnyView(body) }
+        return AnyView(AdvanceAfter(
+            durationMs: p["duration_ms"].intValue ?? 3000, ctx: ctx, content: AnyView(body)))
+    }
+
     switch style {
     case "spinner":
         return applyStyle(
-            ProgressView()
+            timed(ProgressView()
                 .progressViewStyle(.circular)
                 .tint(ctx.primary.color)
                 .scaleEffect(1.4)
                 .frame(maxWidth: .infinity)
-                .frame(height: 40),
+                .frame(height: 40)),
             n.style, ctx)
     case "percentage":
         return applyStyle(
-            Text("\(Int((value * 100).rounded()))%")
+            timed(Text("\(Int((value * 100).rounded()))%")
                 .font(.system(size: 40, weight: .bold))
                 .foregroundColor(ctx.primary.color)
-                .frame(maxWidth: .infinity),
+                .frame(maxWidth: .infinity)),
             n.style, ctx)
     case "steps":
         let steps = 4
         let done = Int((value * Double(steps)).rounded())
         return applyStyle(
-            HStack(spacing: 6) {
+            timed(HStack(spacing: 6) {
                 ForEach(0..<steps, id: \.self) { i in
                     Capsule()
                         .fill(i < done ? ctx.primary.color : ctx.border.color)
                         .frame(height: 6)
                         .frame(maxWidth: .infinity)
                 }
-            },
+            }),
             n.style, ctx)
     case "animated_list" where !(p["items"].arrayValue ?? []).isEmpty:
         return applyStyle(
@@ -653,4 +682,225 @@ func avatarInitial(_ author: String, _ ctx: RenderCtx) -> some View {
             Text(author.isEmpty ? "?" : String(author.prefix(1)).uppercased())
                 .font(.system(size: 13, weight: .bold))
                 .foregroundColor(ctx.onPrimary.color))
+}
+
+// MARK: - compare
+
+/// compare → interactive before/after. `mode` picks the interaction: a
+/// draggable divider wiping left↔right (`horizontal`) or top↔bottom
+/// (`vertical`), or a tap that swaps which image is shown (`toggle`).
+@MainActor
+func renderCompare(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
+    let p = n.props
+    let radius = p["radius"].doubleValue ?? 0
+    let height = p["height"].doubleValue
+
+    var view = AnyView(
+        CompareBox(
+            beforeURL: URL(string: ctx.resolve(p["before_url"])),
+            afterURL: URL(string: ctx.resolve(p["after_url"])),
+            beforeLabel: ctx.resolve(p["before_label"]),
+            afterLabel: ctx.resolve(p["after_label"]),
+            mode: p["mode"].stringValue ?? "horizontal",
+            initialPosition: p["initial_position"].doubleValue ?? 0.5,
+            contentMode: p["fit"].stringValue == "contain" ? .fit : .fill))
+
+    // No intrinsic size: honor `height`, else derive it from `ratio`, else 3:4.
+    //
+    // NOT `.aspectRatio(_, contentMode: .fit)`: that leaves the box flexible in
+    // BOTH axes, so a sibling `spacer{flex:1}` in the same VStack bargains it
+    // down to a fraction of the column and the ratio then shrinks the width to
+    // match — the box renders about half as wide as the web, which sets
+    // `width:100%` and derives height. Claim the full width, measure it, and
+    // set the height outright.
+    view = AnyView(
+        CompareRatioBox(
+            explicitHeight: height.map { CGFloat($0) },
+            ratio: CGFloat(parseRatio(p["ratio"].stringValue) ?? 3.0 / 4.0),
+            content: view))
+    if radius > 0 {
+        view = AnyView(view.clipShape(RoundedRectangle(cornerRadius: radius)))
+    }
+    return applyStyle(view, n.style, ctx)
+}
+
+/// Full-width box whose height is either explicit or `width / ratio`.
+///
+/// Measuring the width and setting the height outright is what keeps a
+/// ratio-sized node from negotiating its height away against a sibling
+/// `Spacer` — see the note in `renderCompare`.
+struct CompareRatioBox: View {
+    let explicitHeight: CGFloat?
+    let ratio: CGFloat
+    let content: AnyView
+
+    @State private var width: CGFloat = 0
+
+    private var height: CGFloat? {
+        if let explicitHeight { return explicitHeight }
+        return width > 0 ? width / ratio : nil
+    }
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { width = geo.size.width }
+                        .onChange(of: geo.size.width) { width = $0 }
+                })
+    }
+}
+
+/// "W:H" → W/H. Nil when absent or malformed, so callers can default.
+func parseRatio(_ ratio: String?) -> Double? {
+    guard let ratio else { return nil }
+    let parts = ratio.split(separator: ":")
+    guard parts.count == 2,
+          let w = Double(parts[0]), let h = Double(parts[1]), h != 0
+    else { return nil }
+    return w / h
+}
+
+struct CompareBox: View {
+    let beforeURL: URL?
+    let afterURL: URL?
+    let beforeLabel: String
+    let afterLabel: String
+    let mode: String
+    let initialPosition: Double
+    let contentMode: ContentMode
+
+    @State private var pos: Double?
+    @State private var showAfter = false
+
+    private var position: Double { (pos ?? initialPosition).clamped01 }
+    private var horizontal: Bool { mode != "vertical" }
+
+    var body: some View {
+        if mode == "toggle" {
+            // Same GeometryReader + explicit frame as the wipe modes: a `.fill`
+            // RemoteImage overflows its box, and an unconstrained ZStack sizes
+            // to that overflow — which pushed the badge and the hint outside
+            // the visible (clipped) area entirely.
+            GeometryReader { geo in
+                let size = geo.size
+                let label = showAfter ? afterLabel : beforeLabel
+                ZStack(alignment: .topLeading) {
+                    RemoteImage(url: showAfter ? afterURL : beforeURL,
+                                contentMode: contentMode)
+                        .frame(width: size.width, height: size.height)
+                        .clipped()
+                    if !label.isEmpty {
+                        compareBadge(label).padding(10)
+                    }
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            compareHint("Tap to compare")
+                        }
+                    }
+                    .padding(10)
+                }
+                .frame(width: size.width, height: size.height)
+                .contentShape(Rectangle())
+                .onTapGesture { showAfter.toggle() }
+            }
+        } else {
+            GeometryReader { geo in
+                let size = geo.size
+                ZStack(alignment: .topLeading) {
+                    RemoteImage(url: afterURL, contentMode: contentMode)
+                        .frame(width: size.width, height: size.height)
+                        .clipped()
+                    RemoteImage(url: beforeURL, contentMode: contentMode)
+                        .frame(width: size.width, height: size.height)
+                        .clipped()
+                        .mask(alignment: horizontal ? .leading : .top) {
+                            Rectangle().frame(
+                                width: horizontal ? size.width * position : size.width,
+                                height: horizontal ? size.height : size.height * position)
+                        }
+
+                    // Divider bar + knob, drawn at the wipe position.
+                    Rectangle()
+                        .fill(Color.white)
+                        .frame(width: horizontal ? 2 : size.width,
+                               height: horizontal ? size.height : 2)
+                        .offset(x: horizontal ? size.width * position - 1 : 0,
+                                y: horizontal ? 0 : size.height * position - 1)
+                    compareKnob(horizontal: horizontal)
+                        .offset(
+                            x: horizontal ? size.width * position - 16 : size.width / 2 - 16,
+                            y: horizontal ? size.height / 2 - 16 : size.height * position - 16)
+
+                    if !beforeLabel.isEmpty {
+                        compareBadge(beforeLabel).padding(10)
+                    }
+                    if !afterLabel.isEmpty {
+                        VStack {
+                            if horizontal {
+                                HStack { Spacer(); compareBadge(afterLabel) }
+                                Spacer()
+                            } else {
+                                Spacer()
+                                HStack { compareBadge(afterLabel); Spacer() }
+                            }
+                        }
+                        .padding(10)
+                    }
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            let raw = horizontal
+                                ? (size.width == 0 ? 0.5 : value.location.x / size.width)
+                                : (size.height == 0 ? 0.5 : value.location.y / size.height)
+                            pos = Double(raw).clamped01
+                        })
+            }
+        }
+    }
+}
+
+/// Raw colors, not theme tokens: these sit on top of a photo, where a theme
+/// text color can land invisible.
+func compareBadge(_ label: String) -> some View {
+    Text(label)
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundColor(.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color.black.opacity(0.8))
+        .clipShape(Capsule())
+}
+
+func compareHint(_ label: String) -> some View {
+    Text(label)
+        .font(.system(size: 11))
+        .foregroundColor(.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color.black.opacity(0.6))
+        .clipShape(Capsule())
+}
+
+func compareKnob(horizontal: Bool) -> some View {
+    Circle()
+        .fill(Color.white)
+        .frame(width: 32, height: 32)
+        .shadow(color: Color.black.opacity(0.2), radius: 3, y: 2)
+        .overlay(
+            Text(horizontal ? "↔" : "↕")
+                .font(.system(size: 15))
+                .foregroundColor(Color(.sRGB, red: 0x18 / 255.0, green: 0x18 / 255.0,
+                                       blue: 0x1B / 255.0)))
+}
+
+extension Double {
+    fileprivate var clamped01: Double { Swift.min(1, Swift.max(0, self)) }
 }

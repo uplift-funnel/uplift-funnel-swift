@@ -1,10 +1,56 @@
 import SwiftUI
 import UpliftFunnel
 
+/// Stand-in for a real OS dialog / auth sheet / purchase sheet.
+///
+/// A handler `await`s `ask(_:)`, which suspends until the user taps a button —
+/// so BOTH branches of a flow are walkable (deny a permission, cancel a
+/// purchase) without wiring a real integration first. Mirrors the Flutter
+/// example's `_confirm`.
+@MainActor
+final class DemoPrompt: ObservableObject {
+    @Published var isPresented = false
+    @Published private(set) var message = ""
+    @Published private(set) var confirmLabel = "Allow"
+    /// Info-only prompts (the link handler) get a single OK button.
+    @Published private(set) var isInfo = false
+
+    private var continuation: CheckedContinuation<Bool, Never>?
+
+    /// Suspends until the user answers. A second ask while one is still open
+    /// resolves the first as denied rather than dropping its continuation.
+    func ask(_ message: String, confirmLabel: String = "Allow") async -> Bool {
+        resolve(false)
+        self.message = message
+        self.confirmLabel = confirmLabel
+        isInfo = false
+        isPresented = true
+        return await withCheckedContinuation { self.continuation = $0 }
+    }
+
+    /// Fire-and-forget notice — the analog of the Flutter demo's snackbar.
+    func info(_ message: String) {
+        resolve(false)
+        self.message = message
+        isInfo = true
+        isPresented = true
+    }
+
+    /// Idempotent: resuming twice would trap, so the continuation is cleared
+    /// as it resolves.
+    func resolve(_ granted: Bool) {
+        isPresented = false
+        continuation?.resume(returning: granted)
+        continuation = nil
+    }
+}
+
 /// Demo host for the UpliftFunnel SDK against a local `pnpm dev:api`
 /// (http://localhost:3000). Paste a dev public key (`fnl_pk_…` — printed to
 /// /tmp/funnel-demo-keys by the API seeder), enter a flow key, hit Start.
 struct ContentView: View {
+    @StateObject private var prompt = DemoPrompt()
+
     @AppStorage("demo.apiKey") private var apiKey = ""
     @AppStorage("demo.serverUrl") private var serverUrl = "http://localhost:3000"
     @AppStorage("demo.flowKey") private var flowKey = "cal-ai-clone"
@@ -72,16 +118,31 @@ struct ContentView: View {
 
     @ViewBuilder
     private var flowView: some View {
-        if isExperiment {
-            UpliftFunnelFlowView.experiment(
-                flowKey,
-                onCompleted: handleResult,
-                forceRefresh: forceRefresh)
-        } else {
-            UpliftFunnelFlowView(
-                flowKey: flowKey,
-                onCompleted: handleResult,
-                forceRefresh: forceRefresh)
+        Group {
+            if isExperiment {
+                UpliftFunnelFlowView.experiment(
+                    flowKey,
+                    onCompleted: handleResult,
+                    forceRefresh: forceRefresh)
+            } else {
+                UpliftFunnelFlowView(
+                    flowKey: flowKey,
+                    onCompleted: handleResult,
+                    forceRefresh: forceRefresh)
+            }
+        }
+        // Handlers only ever fire while a flow is on screen, so the alert
+        // lives on the cover's content — an alert attached to the form
+        // underneath would never present.
+        .alert("Demo handler", isPresented: $prompt.isPresented) {
+            if prompt.isInfo {
+                Button("OK") { prompt.resolve(false) }
+            } else {
+                Button("Don't Allow", role: .cancel) { prompt.resolve(false) }
+                Button(prompt.confirmLabel) { prompt.resolve(true) }
+            }
+        } message: {
+            Text(prompt.message)
         }
     }
 
@@ -102,30 +163,60 @@ struct ContentView: View {
         guard !configured else { return }
         configured = true
 
-        // Demo handlers: log to console and succeed, so signin/permission/
-        // purchase screens are walkable without real integrations.
-        UpliftFunnel.registerLinkHandler { url in
-            print("[example] open link: \(url)")
-            if let parsed = URL(string: url) {
-                UIApplication.shared.open(parsed)
-            }
-        }
+        // ── Native handoffs ──────────────────────────────────────────────
+        // The flow JSON declares WHAT happens (a signin gate, a permission
+        // ask, a paywall CTA, a Terms link); these handlers are HOW your app
+        // does it. Every one is optional, so you can wire them one at a time.
+        //
+        // This demo surfaces each as a confirm dialog rather than faking a
+        // success, so the deny/cancel branches are reachable too. In a real
+        // app you'd call the commented-out API instead.
         UpliftFunnel.registerSignInHandler { provider in
-            print("[example] sign in via \(provider)")
-            return true
+            // e.g. ASAuthorizationAppleIDProvider().createRequest() driven by
+            // an ASAuthorizationController when provider == "apple".
+            print("[example] sign in requested: \(provider)")
+            return await prompt.ask("Sign in with \(provider)?")
         }
         UpliftFunnel.registerPermissionHandler { permission in
+            // e.g. UNUserNotificationCenter.current()
+            //        .requestAuthorization(options: [.alert, .badge, .sound])
             print("[example] permission requested: \(permission)")
-            return true
-        }
-        UpliftFunnel.registerRestoreHandler {
-            print("[example] restore purchases")
-            return false
+            return await prompt.ask("Grant \(permission) permission?")
         }
         UpliftFunnel.registerPurchaseHandler { request in
-            print("[example] purchase plan=\(request.planId ?? "-") "
+            // e.g. Purchases.shared.purchase(product:) (RevenueCat) or
+            // StoreKit's Product.purchase(). Map cancel/failure onto the
+            // matching PurchaseResult so the user stays on the paywall and
+            // analytics records the drop-off.
+            print("[example] purchase requested: plan=\(request.planId ?? "-") "
                   + "product=\(request.productId ?? "-")")
-            return .purchased
+            let bought = await prompt.ask(
+                "Purchase \"\(request.productId ?? request.planId ?? "—")\" "
+                + "(plan \(request.planId ?? "—"))?",
+                confirmLabel: "Buy")
+            return bought ? .purchased : .cancelled
+        }
+        UpliftFunnel.registerRestoreHandler {
+            // e.g. Purchases.shared.restorePurchases() — return whether an
+            // active entitlement actually came back.
+            print("[example] restore requested")
+            return await prompt.ask("Restore purchases?", confirmLabel: "Restore")
+        }
+        UpliftFunnel.registerPhotoUploadHandler { request in
+            // e.g. PHPickerViewController honoring request.source, returning
+            // the picked asset's local path. Nil = the user backed out.
+            print("[example] photo requested: source=\(request.source) "
+                  + "shape=\(request.shape)")
+            let picked = await prompt.ask(
+                "Pick a photo (source \(request.source), \(request.shape))?",
+                confirmLabel: "Pick")
+            return picked ? "demo://photo" : nil
+        }
+        UpliftFunnel.registerLinkHandler { url in
+            // e.g. UIApplication.shared.open(parsed). The demo only reports
+            // it, so tapping Terms mid-flow doesn't kick you out of the app.
+            print("[example] open link: \(url)")
+            prompt.info("Would open \(url)")
         }
         // Fake catalog so {{price.X}} interpolation and plan_picker
         // auto-binding light up.

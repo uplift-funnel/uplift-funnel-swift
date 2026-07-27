@@ -32,8 +32,16 @@ func renderStack(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
 
     let width = p["width"]
     let height = p["height"]
+    // A block-level flex ROW fills its inline axis in CSS, so `justify` always
+    // has free space to distribute; a column is content-sized on the block
+    // axis, so vertical distribution still needs an explicit height (or a flex
+    // spacer child). Only a row laid out in a column context is block-level —
+    // a row nested inside another row is a flex ITEM and stays content-sized,
+    // or it would greedily eat its siblings' width.
+    let autoFillRow = isRow && justify != "start" && ctx.parentAxis == .vertical
     let mainAxisFilled = (isRow ? width : height).stringValue == "fill"
         || (isRow ? width : height).doubleValue != nil
+        || autoFillRow
 
     // Whether justify spacers are needed: SwiftUI stacks hug content, so
     // space distribution only matters when the main axis has room.
@@ -113,10 +121,13 @@ func renderStack(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
     }
 
     // Width/height on the stack itself: fill or fixed px.
-    let wFill = width.stringValue == "fill"
-    let hFill = height.stringValue == "fill"
     let wPx = width.stringValue == nil ? width.doubleValue : nil
     let hPx = height.stringValue == nil ? height.doubleValue : nil
+    // A distributing row has to OCCUPY the space it distributes, or its
+    // justify spacers collapse and the children pack at the leading edge
+    // (two hugging texts with `justify: "between"` rendering as one run).
+    let wFill = width.stringValue == "fill" || (autoFillRow && wPx == nil)
+    let hFill = height.stringValue == "fill"
     if wFill || hFill {
         flex = AnyView(flex.frame(
             maxWidth: wFill ? .infinity : nil,

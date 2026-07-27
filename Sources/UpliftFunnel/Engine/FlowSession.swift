@@ -38,6 +38,17 @@ public final class FlowSession: ObservableObject {
     @Published public private(set) var currentScreen: FunnelScreen
     @Published public private(set) var completed: Bool = false
 
+    /// Whether a back affordance should show for `currentScreen`.
+    ///
+    /// STORED, not computed off `engine.history`: the engine grows history
+    /// inside `advance()` a beat before `currentScreen` is published, so a
+    /// computed read could be observed by a render pass that still holds the
+    /// OLD screen — popping the chevron onto the outgoing screen (and shoving
+    /// its content down by the chrome-bar height) before the transition ran.
+    /// Publishing it in the same mutation as `currentScreen` makes the two
+    /// impossible to observe out of step.
+    @Published public private(set) var canGoBack: Bool = false
+
     /// Stable identifier for this session — every event emitted gets it
     /// attached so analytics can group by funnel walk.
     public let sessionId: String
@@ -70,6 +81,7 @@ public final class FlowSession: ObservableObject {
         self.sessionId = sessionId ?? Identifiers.sessionId()
         self.experiment = experiment
         self.flowVersion = flowVersion
+        syncCanGoBack()
         // Defer so listeners attached synchronously after the initializer
         // (the typical case in views and tests) actually observe the start
         // event — the analog of Flutter's microtask.
@@ -86,7 +98,12 @@ public final class FlowSession: ObservableObject {
 
     public var variables: [String: JSONValue] { engine.variables }
 
-    public var canGoBack: Bool { !engine.history.isEmpty && !engine.isComplete }
+    /// Recompute `canGoBack` from engine state. MUST be called in the same
+    /// synchronous mutation that publishes `currentScreen`/`completed`.
+    private func syncCanGoBack() {
+        let next = !engine.history.isEmpty && !engine.isComplete
+        if canGoBack != next { canGoBack = next }
+    }
 
     /// Whether the most recent screen change was a `goBack()`. The session
     /// view reads this to mirror the slide animation on back navigation; it
@@ -205,6 +222,7 @@ public final class FlowSession: ObservableObject {
         if ok {
             lastNavWasBack = true
             currentScreen = engine.currentScreen
+            syncCanGoBack()
         }
         return ok
     }
@@ -256,6 +274,7 @@ public final class FlowSession: ObservableObject {
         let step = engine.complete(reason)
         if completed { return }
         completed = true
+        syncCanGoBack()
         if case .completed(let effective) = step {
             emit(.completed(
                 flowId: flow.id, timestamp: Date(),
@@ -297,12 +316,14 @@ public final class FlowSession: ObservableObject {
         switch step {
         case .advanced(let screenId):
             currentScreen = engine.currentScreen
+            syncCanGoBack()
             emit(.screenChanged(
                 flowId: flow.id, timestamp: Date(),
                 from: fromId, to: screenId))
         case .completed(let reason):
             if completed { return }
             completed = true
+            syncCanGoBack()
             emit(.completed(
                 flowId: flow.id, timestamp: Date(),
                 reason: reason, variables: variables))

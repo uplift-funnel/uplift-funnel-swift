@@ -56,9 +56,19 @@ func interpolate(_ input: String, vars: [String: String]) -> String {
         guard let full = Range(m.range, in: input),
               let nameRange = Range(m.range(at: 1), in: input) else { continue }
         result += input[lastEnd..<full.lowerBound]
-        result += vars[String(input[nameRange])] ?? ""
+        result += displayValue(vars[String(input[nameRange])] ?? "")
         lastEnd = full.upperBound
     }
     result += input[lastEnd...]
     return result
+}
+
+/// A multi-select writes its variable JSON-encoded (`["a","b"]`). Copy that
+/// interpolates one must read as a list, not leak the array literal — so
+/// decode and join. Anything else passes through.
+func displayValue(_ raw: String) -> String {
+    guard raw.hasPrefix("["), let data = raw.data(using: .utf8),
+          let decoded = try? JSONSerialization.jsonObject(with: data) as? [Any]
+    else { return raw }
+    return decoded.map { String(describing: $0) }.joined(separator: ", ")
 }
