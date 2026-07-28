@@ -156,9 +156,10 @@ struct ContentView: View {
     }
 
     private func configureSDK() async {
+        // Debug-only hook, set before configure.
+        UpliftFunnel.debugServerUrl = serverUrl.isEmpty ? nil : serverUrl
         await UpliftFunnel.configure(
             apiKey: apiKey,
-            serverUrl: serverUrl,
             appVersion: "1.0.0-example")
         guard !configured else { return }
         configured = true

@@ -17,7 +17,7 @@ it later without shipping an app update.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/uplift-funnel/uplift-funnel-swift.git", from: "0.6.0"),
+.package(url: "https://github.com/uplift-funnel/uplift-funnel-swift.git", from: "0.7.0"),
 // target dependency:
 .product(name: "UpliftFunnel", package: "uplift-funnel-swift")
 ```
@@ -32,6 +32,10 @@ import UpliftFunnel
 
 // 1) At app startup
 await UpliftFunnel.configure(apiKey: "fnl_pk_…", appVersion: "2.4.0")
+
+// Pointing at a local API during development — debug builds only; setting
+// this in a release build traps, because a shipped app talks to production.
+// UpliftFunnel.debugServerUrl = "http://localhost:3000"
 
 // 2) Drop a funnel into your view tree
 UpliftFunnelFlowView(flowKey: "main-onboarding") { result in

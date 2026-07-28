@@ -85,10 +85,6 @@ public enum UpliftFunnel {
     /// - `apiKey` — your public Uplift Funnel API key (`fnl_pk_…`). Sent as
     ///   a Bearer token on every fetch and event upload. The server resolves
     ///   which app the key belongs to.
-    /// - `serverUrl` — optional override for local dev / staging. Defaults
-    ///   to `https://api.upliftfunnel.com`. Must be an absolute http(s) URL;
-    ///   cleartext `http://` is accepted in debug builds only, so a release
-    ///   build can't ship the API key and the event stream in the clear.
     /// - `trackingEnabled` — pass `false` to start with analytics off and
     ///   turn it on once the user consents (see `setTrackingEnabled`). Flows
     ///   still fetch and render either way: gating the render on consent would
@@ -107,14 +103,13 @@ public enum UpliftFunnel {
     /// sticky A/B variants stay sticky across config swaps.
     public static func configure(
         apiKey: String,
-        serverUrl: String? = nil,
         appVersion: String? = nil,
         bundleId: String? = nil,
         trackingEnabled: Bool = true,
         redactVariables: Set<String> = []
     ) async {
         await configureInternal(
-            apiKey: apiKey, serverUrl: serverUrl, appVersion: appVersion,
+            apiKey: apiKey, serverUrl: debugServerUrl, appVersion: appVersion,
             bundleId: bundleId, trackingEnabled: trackingEnabled,
             redactVariables: redactVariables)
     }
@@ -130,27 +125,9 @@ public enum UpliftFunnel {
         urlSession: URLSession? = nil,
         defaults: UserDefaults = .standard
     ) async {
-        // Validate before touching existing state: a bad serverUrl must not
-        // leave a previously-configured SDK half torn down. A malformed or
-        // cleartext-in-release URL is a wiring mistake, not a runtime
-        // condition, so it fails loudly rather than silently falling back to
-        // production (which would ship staging traffic to the live API).
-        let resolvedServerUrl: String
-        if let serverUrl {
-            #if DEBUG
-            let allowCleartext = true
-            #else
-            let allowCleartext = false
-            #endif
-            do {
-                resolvedServerUrl = try normalizeServerUrl(
-                    serverUrl, allowCleartext: allowCleartext)
-            } catch {
-                preconditionFailure("UpliftFunnel.configure: \(error)")
-            }
-        } else {
-            resolvedServerUrl = FunnelState.defaultServerUrl
-        }
+        // Already validated by the `debugServerUrl` setter (the only way a
+        // non-production host reaches here), so this is a plain fallback.
+        let resolvedServerUrl = serverUrl ?? FunnelState.defaultServerUrl
 
         let previous = state
 
@@ -504,6 +481,46 @@ public enum UpliftFunnel {
     static func lookupRestoreHandler() -> RestoreHandler? { state?.restoreHandler }
     static func lookupPhotoUploadHandler() -> PhotoUploadHandler? { state?.photoUploadHandler }
     static func lookupProducts() -> [String: UpliftFunnelProduct] { state?.products ?? [:] }
+
+    /// Points the SDK at a non-production API — a local `pnpm dev:api`, a
+    /// staging box. **Debug builds only:** setting it in a release build traps,
+    /// because a shipped app has no business talking to anything but the
+    /// production API, and a stray override there would send real users'
+    /// events somewhere they can't be seen.
+    ///
+    /// Set it before `configure`; afterwards it has no effect on the running
+    /// configuration.
+    ///
+    /// ```swift
+    /// UpliftFunnel.debugServerUrl = "http://localhost:3000"
+    /// await UpliftFunnel.configure(apiKey: "fnl_pk_…")
+    /// ```
+    public static var debugServerUrl: String? {
+        get { _debugServerUrl }
+        set {
+            #if DEBUG
+            guard let newValue else {
+                _debugServerUrl = nil
+                return
+            }
+            do {
+                _debugServerUrl = try normalizeServerUrl(
+                    newValue, allowCleartext: true)
+            } catch {
+                preconditionFailure("UpliftFunnel.debugServerUrl: \(error)")
+            }
+            #else
+            if newValue != nil {
+                preconditionFailure(
+                    "UpliftFunnel.debugServerUrl is debug-only. A release "
+                    + "build always talks to \(FunnelState.defaultServerUrl).")
+            }
+            _debugServerUrl = nil
+            #endif
+        }
+    }
+
+    private static var _debugServerUrl: String?
 
     /// Whether analytics are currently being collected.
     public static var isTrackingEnabled: Bool { state?.trackingEnabled ?? true }
