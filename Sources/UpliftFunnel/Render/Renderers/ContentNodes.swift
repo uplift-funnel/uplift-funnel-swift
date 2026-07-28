@@ -254,11 +254,14 @@ struct AdvanceAfter: View {
 
     var body: some View {
         content.task {
-            guard !fired else { return }
-            fired = true
+            // `.task` is cancelled on disappear and restarted on reappear,
+            // while @State survives — arming `fired` before the sleep meant a
+            // screen that briefly went off-screen could never advance again.
+            guard !fired, ctx.onAction != nil else { return }
             let ns = UInt64(max(0, min(durationMs, 600_000))) * 1_000_000
             try? await Task.sleep(nanoseconds: ns)
             guard !Task.isCancelled else { return }
+            fired = true
             ctx.onAction?("next")
         }
     }
@@ -270,16 +273,16 @@ func renderProgress(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
     let style = p["style"].stringValue ?? "bar"
     let value = p["value"].doubleValue ?? 0.6
 
-    // spinner/percentage/steps draw no completion of their own, so they cannot
-    // fire `advance_on_complete` the way the bar and the checklist do — and a
-    // loading screen built on one is usually its screen's ONLY exit. Time it
-    // out instead, or the screen is a dead end.
-    let selfAdvancing = style == "bar" || style == "animated_list"
-    let needsTimeout = p["advance_on_complete"].boolValue == true && !selfAdvancing
+    // Whether to time it out is decided by what the chosen BRANCH actually
+    // does, not by the declared style — see `progressAdvancePlan`. Keying it on
+    // style armed both paths for a typo'd style (two `next`, one screen
+    // silently skipped) and trusted `bar` to self-advance in shapes where it
+    // can't, which is how a loading screen ended up frozen at 60%.
+    let plan = progressAdvancePlan(props: p, screenHasExit: ctx.screenHasExit)
     func timed<V: View>(_ body: V) -> AnyView {
-        guard needsTimeout else { return AnyView(body) }
+        guard plan.needsTimeout else { return AnyView(body) }
         return AnyView(AdvanceAfter(
-            durationMs: p["duration_ms"].intValue ?? 3000, ctx: ctx, content: AnyView(body)))
+            durationMs: plan.effectiveMs, ctx: ctx, content: AnyView(body)))
     }
 
     switch style {
@@ -314,19 +317,19 @@ func renderProgress(_ n: PrimNode, _ ctx: RenderCtx) -> AnyView {
             n.style, ctx)
     case "animated_list" where !(p["items"].arrayValue ?? []).isEmpty:
         return applyStyle(
-            AnimatedChecklist(
+            timed(AnimatedChecklist(
                 items: (p["items"].arrayValue ?? []).map { ctx.resolve($0) },
-                durationMs: p["duration_ms"].intValue ?? 3000,
-                advanceOnComplete: p["advance_on_complete"].boolValue == true,
-                ctx: ctx),
+                durationMs: plan.effectiveMs,
+                advanceOnComplete: plan.selfFires,
+                ctx: ctx)),
             n.style, ctx)
     default:
         return applyStyle(
-            TimedProgressBar(
+            timed(TimedProgressBar(
                 value: value,
-                durationMs: p["duration_ms"].intValue,
-                advanceOnComplete: p["advance_on_complete"].boolValue == true,
-                ctx: ctx),
+                durationMs: plan.selfFires ? plan.effectiveMs : nil,
+                advanceOnComplete: plan.selfFires,
+                ctx: ctx)),
             n.style, ctx)
     }
 }
@@ -342,6 +345,7 @@ struct AnimatedChecklist: View {
 
     @State private var done = 0
     @State private var started = false
+    @State private var tasks: [Task<Void, Never>] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -368,26 +372,45 @@ struct AnimatedChecklist: View {
             }
         }
         .onAppear {
-            guard !started else { return }
+            // Gated on the action sink, not on reduce-motion: a preview with
+            // nowhere to send the action must stay still, whereas a
+            // reduce-motion user was getting a screen that never advanced.
+            guard !started, ctx.onAction != nil else { return }
             started = true
+
+            // Reduce-motion freezes the ROWS only; the advance below still has
+            // to be scheduled or the screen is a dead end.
             if ctx.reduceMotion {
                 done = items.count
-                return
-            }
-            let step = max(durationMs / max(items.count, 1), 1)
-            for i in 0..<items.count {
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: UInt64(step * (i + 1)) * 1_000_000)
-                    done = max(done, i + 1)
+            } else {
+                let step = max(durationMs / max(items.count, 1), 1)
+                for i in 0..<items.count {
+                    // Clamped before the UInt64 conversion — a negative or huge
+                    // duration used to trap here.
+                    let ms = clampedMs(step * (i + 1))
+                    tasks.append(Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
+                        guard !Task.isCancelled else { return }
+                        done = max(done, i + 1)
+                    })
                 }
             }
+
             if advanceOnComplete {
                 let action = ctx
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: UInt64(durationMs) * 1_000_000)
+                let ms = clampedMs(durationMs)
+                tasks.append(Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
+                    guard !Task.isCancelled else { return }
                     await action.dispatchAction("next")
-                }
+                })
             }
+        }
+        .onDisappear {
+            // The session-level guard already ignores a stale advance; this
+            // stops the work rather than merely discarding its result.
+            for task in tasks { task.cancel() }
+            tasks = []
         }
     }
 }
@@ -404,6 +427,7 @@ struct TimedProgressBar: View {
 
     @State private var progress: Double = 0
     @State private var fired = false
+    @State private var task: Task<Void, Never>?
 
     private var animated: Bool { (durationMs ?? 0) > 0 }
 
@@ -418,19 +442,24 @@ struct TimedProgressBar: View {
         }
         .frame(height: 8)
         .onAppear {
-            guard animated, !fired else { return }
-            withAnimation(.linear(duration: Double(durationMs!) / 1000)) {
+            guard animated, !fired, ctx.onAction != nil else { return }
+            let ms = clampedMs(durationMs ?? kDefaultProgressMs)
+            withAnimation(.linear(duration: Double(ms) / 1000)) {
                 progress = 1
             }
             let action = ctx
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: UInt64(durationMs!) * 1_000_000)
-                guard !fired else { return }
+            task = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
+                guard !Task.isCancelled, !fired else { return }
                 fired = true
                 if advanceOnComplete {
                     action.onAction?("next")
                 }
             }
+        }
+        .onDisappear {
+            task?.cancel()
+            task = nil
         }
     }
 }

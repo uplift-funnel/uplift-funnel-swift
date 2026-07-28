@@ -236,7 +236,17 @@ public final class FlowSession: ObservableObject {
     ///   - `end:<reason>` — end the flow immediately with `<reason>`.
     ///   - anything else (including `url:…`) — emitted as a custom event so
     ///     host code can react (e.g. launch a URL).
-    public func handleAction(_ action: String) {
+    /// Runs `action`, ignoring it when it was raised by a screen the user has
+    /// already left.
+    ///
+    /// Timed actions — a progress node's advance, an `AdvanceAfter` timeout —
+    /// are scheduled while a screen is on-screen but fire later, and
+    /// `advance()` is not idempotent: two `next` calls step two screens,
+    /// silently skipping one. Passing `fromScreenId` makes a stale timer a
+    /// no-op instead. Omit it for direct user input, which is by definition
+    /// current.
+    public func handleAction(_ action: String, fromScreenId: String? = nil) {
+        if let fromScreenId, fromScreenId != engine.currentScreenId { return }
         switch action {
         case "next", "submit":
             advance()

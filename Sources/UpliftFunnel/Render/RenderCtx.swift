@@ -74,6 +74,16 @@ struct RenderCtx {
     /// nodes fall back to their poster/placeholder.
     var reduceMotion = false
 
+    /// Whether anything on this screen can move the user forward — a button, a
+    /// sign-in, an auto-advancing choice, a swipe deck, a plan picker, or a
+    /// top-bar skip/close.
+    ///
+    /// False makes a `progress` node the screen's only exit, so it advances
+    /// even when the author never set `advance_on_complete`. Defaults to true:
+    /// a caller that doesn't know (a preview rendering one node) must not get
+    /// surprise navigation.
+    var screenHasExit = true
+
     var locale: String
     var defaultLocale: String
     var localizations: JSONValue

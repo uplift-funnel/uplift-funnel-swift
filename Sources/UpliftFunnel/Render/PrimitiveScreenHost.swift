@@ -43,7 +43,9 @@ struct PrimitiveScreenHost: View {
             vars: vars,
             selections: vars,
             canGoBack: showBack ?? session.canGoBack,
-            onAction: { session.handleAction($0) },
+            // Stamped with the screen that raised it, so a timer firing after
+            // the user has moved on is dropped rather than skipping a screen.
+            onAction: { session.handleAction($0, fromScreenId: screen.id) },
             // A JSON-array string coming back from the renderer is a
             // multi-select value — store the real array so transition
             // conditions (`contains`) and analytics see an array_string,

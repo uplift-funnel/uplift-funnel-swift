@@ -11,6 +11,35 @@ let noBackArchetypes: Set<String> = ["plan_picker", "paywall_handoff"]
 
 /// Depth-first finds the first `plan_picker` node's `bind.save_to` — the
 /// variable the screen's `purchase` action reads the selected plan id from.
+/// Node types that can move the user forward on their own.
+///
+/// `choice` is conditional: a plain one waits for a CTA, an `auto_advance` one
+/// navigates on tap. `progress` is deliberately absent — it's the node asking
+/// this question.
+private let kExitNodeTypes: Set<String> = ["button", "signin", "swipe", "plan_picker"]
+
+/// Whether anything on this screen can advance it.
+///
+/// A screen whose only content is a loading indicator has exactly one sensible
+/// reading, and answering "no" is what keeps it from hanging when the author
+/// forgot `advance_on_complete`.
+func screenHasExit(_ screen: PrimScreen) -> Bool {
+    if screen.topBar["close"].boolValue == true { return true }
+    if !screen.topBar["skip"].isNull { return true }
+
+    // Nothing to reason about — stay conservative.
+    guard let root = screen.root else { return true }
+
+    func visit(_ node: PrimNode) -> Bool {
+        if kExitNodeTypes.contains(node.type) { return true }
+        if node.type == "choice", node.props["auto_advance"].boolValue == true {
+            return true
+        }
+        return node.children.contains(where: visit)
+    }
+    return visit(root)
+}
+
 func findPlanSaveTo(_ node: PrimNode) -> String? {
     if node.type == "plan_picker" { return node.saveTo }
     for child in node.children {
@@ -101,6 +130,8 @@ struct PrimitiveScreenView: View {
         ctx.planSaveTo = screen.root.flatMap { findPlanSaveTo($0) }
         ctx.screenStyle = ScreenStyleOverrides(style: screen.style)
         ctx.reduceMotion = reduceMotion
+        // Lets a `progress` node know it is the only way off this screen.
+        ctx.screenHasExit = screenHasExit(screen)
 
         return content(screen: screen, ctx: ctx)
             // Markdown action-links (`[Terms](url:…)`, `[Restore](restore)`)
