@@ -119,9 +119,11 @@ public struct UpliftFunnelSessionView: View {
         case .custom(_, _, let name, _) where name.hasPrefix("url:"):
             // `url:<href>` actions (markdown links, url: buttons) surface
             // here as custom events — route them to the host's link opener.
-            let handler = UpliftFunnel.isConfigured
-                ? UpliftFunnel.lookupLinkHandler() : nil
-            handler?(String(name.dropFirst("url:".count)))
+            // `openLink` drops schemes the host hasn't allowed before the
+            // handler sees them; the href is authored content off the network.
+            if UpliftFunnel.isConfigured {
+                UpliftFunnel.openLink(String(name.dropFirst("url:".count)))
+            }
         default:
             break
         }

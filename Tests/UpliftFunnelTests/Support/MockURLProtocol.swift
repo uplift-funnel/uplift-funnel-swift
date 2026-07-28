@@ -92,13 +92,18 @@ final class MockURLProtocol: URLProtocol {
         return data
     }
 
+    /// Mirrors `FlowFetcher.makeSession()` — including the redirect refusal —
+    /// so tests exercise the same behavior production requests get.
     static func session(timeout: TimeInterval = 8) -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.timeoutIntervalForRequest = timeout
         config.protocolClasses = [MockURLProtocol.self]
-        return URLSession(configuration: config)
+        return URLSession(
+            configuration: config,
+            delegate: NoRedirectDelegate.shared,
+            delegateQueue: nil)
     }
 
     // MARK: - URLProtocol

@@ -100,10 +100,9 @@ final class UpliftFunnelFacadeTests: XCTestCase {
         UpliftFunnel.setProducts([UpliftFunnelProduct(id: "p", price: "$1")])
 
         await configure(apiKey: "fnl_pk_second")
-        XCTAssertNotNil(UpliftFunnel.lookupLinkHandler())
         XCTAssertEqual(UpliftFunnel.lookupProducts()["p"]?.price, "$1")
 
-        UpliftFunnel.lookupLinkHandler()?("https://x")
+        XCTAssertTrue(UpliftFunnel.openLink("https://x"))
         XCTAssertEqual(box.value?.experimentId, "hit")
     }
 

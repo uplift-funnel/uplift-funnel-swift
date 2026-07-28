@@ -16,14 +16,26 @@ typealias PlatformImage = NSImage
 final class RemoteImageLoader: ObservableObject {
     static let memoryCache = NSCache<NSURL, PlatformImage>()
 
+    // Ephemeral rather than `.default`: image URLs come from the flow JSON, so
+    // they must not travel on the host app's shared cookie and credential
+    // stores — a URL pointed at a host the user is logged into would otherwise
+    // carry that session with it. The explicit URLCache keeps the disk caching
+    // this loader exists for; redirects are refused like every other SDK
+    // request.
     static let session: URLSession = {
-        let config = URLSessionConfiguration.default
+        let config = URLSessionConfiguration.ephemeral
         config.urlCache = URLCache(
             memoryCapacity: 8 * 1024 * 1024,
             diskCapacity: 50 * 1024 * 1024,
             diskPath: "uplift-funnel-images")
         config.requestCachePolicy = .useProtocolCachePolicy
-        return URLSession(configuration: config)
+        config.httpShouldSetCookies = false
+        config.httpCookieAcceptPolicy = .never
+        config.httpCookieStorage = nil
+        return URLSession(
+            configuration: config,
+            delegate: NoRedirectDelegate.shared,
+            delegateQueue: nil)
     }()
 
     @Published var image: PlatformImage?

@@ -114,13 +114,18 @@ public final class FlowFetcher: @unchecked Sendable {
 
     /// Builds the URLSession all SDK requests go through: ephemeral and with
     /// URLCache disabled, so URLSession's transparent conditional-GET cache
-    /// can never hide the 304s our manual ETag flow branches on.
+    /// can never hide the 304s our manual ETag flow branches on. Redirects are
+    /// refused so a 3xx can't forward the API key to another host — see
+    /// `NoRedirectDelegate`.
     static func makeSession(timeout: TimeInterval = 8) -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.timeoutIntervalForRequest = timeout
-        return URLSession(configuration: config)
+        return URLSession(
+            configuration: config,
+            delegate: NoRedirectDelegate.shared,
+            delegateQueue: nil)
     }
 
     public init(

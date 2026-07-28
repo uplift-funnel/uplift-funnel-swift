@@ -86,7 +86,9 @@ public enum UpliftFunnel {
     ///   a Bearer token on every fetch and event upload. The server resolves
     ///   which app the key belongs to.
     /// - `serverUrl` — optional override for local dev / staging. Defaults
-    ///   to `https://api.upliftfunnel.com`.
+    ///   to `https://api.upliftfunnel.com`. Must be an absolute http(s) URL;
+    ///   cleartext `http://` is accepted in debug builds only, so a release
+    ///   build can't ship the API key and the event stream in the clear.
     /// - `bundleId` — your app's bundle id, sent as `X-Uplift-Bundle-Id` on
     ///   every request so the server can pin your API key to this app — a
     ///   leaked key becomes useless anywhere else. Defaults to
@@ -115,6 +117,28 @@ public enum UpliftFunnel {
         urlSession: URLSession? = nil,
         defaults: UserDefaults = .standard
     ) async {
+        // Validate before touching existing state: a bad serverUrl must not
+        // leave a previously-configured SDK half torn down. A malformed or
+        // cleartext-in-release URL is a wiring mistake, not a runtime
+        // condition, so it fails loudly rather than silently falling back to
+        // production (which would ship staging traffic to the live API).
+        let resolvedServerUrl: String
+        if let serverUrl {
+            #if DEBUG
+            let allowCleartext = true
+            #else
+            let allowCleartext = false
+            #endif
+            do {
+                resolvedServerUrl = try normalizeServerUrl(
+                    serverUrl, allowCleartext: allowCleartext)
+            } catch {
+                preconditionFailure("UpliftFunnel.configure: \(error)")
+            }
+        } else {
+            resolvedServerUrl = FunnelState.defaultServerUrl
+        }
+
         let previous = state
 
         // Tear down a previous uploader so its timers don't leak.
@@ -128,7 +152,7 @@ public enum UpliftFunnel {
         let fetcher = FlowFetcher(cache: cache, urlSession: session)
         let s = FunnelState(
             apiKey: apiKey,
-            serverUrl: serverUrl ?? FunnelState.defaultServerUrl,
+            serverUrl: resolvedServerUrl,
             cache: cache,
             fetcher: fetcher,
             urlSession: session,
@@ -146,6 +170,7 @@ public enum UpliftFunnel {
             s.restoreHandler = previous.restoreHandler
             s.photoUploadHandler = previous.photoUploadHandler
             s.linkHandler = previous.linkHandler
+            s.allowedLinkSchemes = previous.allowedLinkSchemes
             s.products = previous.products
         }
         s.appVersion = appVersion
@@ -260,7 +285,12 @@ public enum UpliftFunnel {
         userVariables: [String: JSONValue]? = nil
     ) async throws -> FlowSessionStart {
         let s = try require("start")
-        let url = URL(string: "\(s.serverUrl)/v1/flows/\(key)")!
+        guard let url = apiURL(serverUrl: s.serverUrl, path: "v1/flows", key: key)
+        else {
+            throw FlowFetchError(
+                kind: .notFound, flowKey: key,
+                message: "not a usable flow key")
+        }
         let fetched = try await s.fetcher.fetch(
             url: url, flowId: key, apiKey: s.apiKey, bundleId: s.bundleId,
             forceRefresh: forceRefresh)
@@ -289,7 +319,13 @@ public enum UpliftFunnel {
     ) async throws -> FlowSessionStart {
         let s = try require("startExperiment")
         let subjectId = s.identity.userId ?? s.ensureAnonymousId()
-        let url = URL(string: "\(s.serverUrl)/v1/experiments/\(key)")!
+        guard let url = apiURL(
+            serverUrl: s.serverUrl, path: "v1/experiments", key: key)
+        else {
+            throw FlowFetchError(
+                kind: .notFound, flowKey: key,
+                message: "not a usable experiment key")
+        }
         let fetched = try await s.fetcher.fetch(
             url: url, flowId: key, apiKey: s.apiKey, subjectId: subjectId,
             bundleId: s.bundleId,
@@ -396,8 +432,50 @@ public enum UpliftFunnel {
 
     /// Register the app's URL opener for `url:<href>` actions — markdown
     /// links in text nodes and buttons with a `url:` action.
-    public static func registerLinkHandler(_ handler: @escaping LinkHandler) {
-        requireForRegistration("registerLinkHandler")?.linkHandler = handler
+    ///
+    /// The href is authored content that arrives over the network, so the SDK
+    /// only forwards URLs whose scheme is in `allowedSchemes` — by default
+    /// ``defaultAllowedLinkSchemes`` (`https`, `http`, `mailto`, `tel`,
+    /// `sms`). Anything else is dropped before the handler runs, so a flow
+    /// can't make the app follow a custom app scheme, a `file://` path, or one
+    /// of the app's own deep links.
+    ///
+    /// Pass `allowedSchemes` to opt specific schemes in — e.g. an app that
+    /// deliberately drives its own routes from a flow:
+    ///
+    /// ```swift
+    /// UpliftFunnel.registerLinkHandler(
+    ///     open, allowedSchemes: UpliftFunnel.defaultAllowedLinkSchemes.union(["myapp"]))
+    /// ```
+    public static func registerLinkHandler(
+        _ handler: @escaping LinkHandler,
+        allowedSchemes: Set<String> = UpliftFunnel.defaultAllowedLinkSchemes
+    ) {
+        guard let s = requireForRegistration("registerLinkHandler") else { return }
+        s.linkHandler = handler
+        s.allowedLinkSchemes = Set(allowedSchemes.map {
+            $0.trimmingCharacters(in: .whitespaces).lowercased()
+        })
+    }
+
+    /// Hand `url` to the registered link opener, but only when its scheme is
+    /// allowed (see ``registerLinkHandler(_:allowedSchemes:)``). Returns
+    /// whether the handler actually ran.
+    ///
+    /// The scheme check lives here rather than at the call site so no future
+    /// `url:` path can reach the host opener without passing it.
+    @discardableResult
+    static func openLink(_ url: String) -> Bool {
+        guard let s = state, let handler = s.linkHandler else { return false }
+        guard isAllowedLinkURL(url, allowedSchemes: s.allowedLinkSchemes) else {
+            #if DEBUG
+            print("[funnel] blocked a url: action with a disallowed scheme: "
+                  + "\(url) — allow it via registerLinkHandler(_:allowedSchemes:).")
+            #endif
+            return false
+        }
+        handler(url)
+        return true
     }
 
     // MARK: - Render-layer lookups (internal)
@@ -407,7 +485,6 @@ public enum UpliftFunnel {
     static func lookupPurchaseHandler() -> PurchaseHandler? { state?.purchaseHandler }
     static func lookupRestoreHandler() -> RestoreHandler? { state?.restoreHandler }
     static func lookupPhotoUploadHandler() -> PhotoUploadHandler? { state?.photoUploadHandler }
-    static func lookupLinkHandler() -> LinkHandler? { state?.linkHandler }
     static func lookupProducts() -> [String: UpliftFunnelProduct] { state?.products ?? [:] }
 
     /// Drain the in-memory event uploader buffer. Usually unnecessary — the
@@ -528,6 +605,10 @@ final class FunnelState {
     var photoUploadHandler: PhotoUploadHandler?
     var linkHandler: LinkHandler?
 
+    /// Schemes `UpliftFunnel.openLink` will forward. Replaced wholesale by
+    /// `registerLinkHandler`'s `allowedSchemes`.
+    var allowedLinkSchemes: Set<String> = UpliftFunnel.defaultAllowedLinkSchemes
+
     /// Runtime product catalog, keyed by store product id.
     var products: [String: UpliftFunnelProduct] = [:]
 
@@ -642,8 +723,12 @@ final class FunnelState {
         // Fixed at configure time (the uploader is rebuilt on every
         // configure), so capturing the value is provider enough.
         let bundleId = bundleId
+        // serverUrl passed configure's validation, so this parse is total.
+        guard let endpoint = URL(string: "\(serverUrl)/v1/events") else {
+            preconditionFailure("UpliftFunnel: invalid serverUrl '\(serverUrl)'")
+        }
         return EventUploader(config: EventUploaderConfig(
-            endpoint: URL(string: "\(serverUrl)/v1/events")!,
+            endpoint: endpoint,
             apiKeyProvider: { identity.activeApiKey ?? "" },
             bundleIdProvider: { bundleId },
             userIdProvider: { identity.userId },

@@ -78,6 +78,16 @@ UpliftFunnel.registerPhotoUploadHandler { request in /* run your picker */ nil }
 UpliftFunnel.registerLinkHandler { url in UIApplication.shared.open(URL(string: url)!) }
 ```
 
+A `url:` href is authored content that arrives over the network, so the SDK
+only forwards `https`, `http`, `mailto`, `tel` and `sms` to your handler —
+everything else is dropped before it runs. To drive your own deep links from a
+flow, opt the scheme in:
+
+```swift
+UpliftFunnel.registerLinkHandler(
+    open, allowedSchemes: UpliftFunnel.defaultAllowedLinkSchemes.union(["myapp"]))
+```
+
 Every purchase attempt/outcome is auto-tracked (`purchase_attempted`,
 `purchase_succeeded`, `purchase_cancelled`, …) so paywall drop-off is
 measurable server-side.
