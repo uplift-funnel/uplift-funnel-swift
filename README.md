@@ -22,9 +22,8 @@ it later without shipping an app update.
 .product(name: "UpliftFunnel", package: "uplift-funnel-swift")
 ```
 
-The repository is private while the SDK is in design-partner use, so the URL
-above resolves only for accounts that have been granted access. Ask us and we'll
-add you.
+In Xcode: **File → Add Package Dependencies…**, paste the URL above, and pick
+the `UpliftFunnel` library.
 
 ## Quickstart
 
