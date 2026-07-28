@@ -13,6 +13,11 @@ import FoundationNetworking
 struct EventUploaderConfig: Sendable {
     let endpoint: URL
 
+    /// Variable names redacted on top of whatever the flow declares
+    /// sensitive. The host's lever for a flow it hasn't re-authored yet, and
+    /// for variables it fills itself through `userVariables`.
+    var redactVariables: Set<String> = []
+
     var flushEvery: TimeInterval = 5
     var flushAt: Int = 20
     var maxBuffer: Int = 500
@@ -62,6 +67,9 @@ actor EventUploader {
     nonisolated let config: EventUploaderConfig
 
     private var buffer: [[String: JSONValue]] = []
+
+    /// Test seam: how many events are waiting to upload.
+    var bufferedCount: Int { buffer.count }
     private var flushTask: Task<Void, Never>?
     private var persistTask: Task<Void, Never>?
     private var flushing = false
@@ -76,12 +84,30 @@ actor EventUploader {
     /// Restore any events persisted from a previous app run and schedule a
     /// flush. Call once after construction.
     func restore() {
-        guard let store = config.queueStore else { return }
+        guard trackingEnabled, let store = config.queueStore else { return }
         let restored = store.load()
         guard !restored.isEmpty else { return }
         buffer.insert(contentsOf: restored, at: 0)
         enforceCaps()
         scheduleFlush(after: config.flushEvery)
+    }
+
+    /// Whether analytics may be collected at all. See
+    /// `UpliftFunnel.setTrackingEnabled`.
+    private(set) var trackingEnabled = true
+
+    /// Turning tracking off drops what's already buffered rather than holding
+    /// it for later: consent withdrawn is not consent deferred, and a queue
+    /// that survived the switch would upload the very events the user just
+    /// refused.
+    func setTrackingEnabled(_ enabled: Bool) {
+        guard trackingEnabled != enabled else { return }
+        trackingEnabled = enabled
+        guard !enabled else { return }
+        flushTask?.cancel()
+        flushTask = nil
+        buffer.removeAll()
+        config.queueStore?.clear()
     }
 
     // MARK: - Serialization (pure; called from the session's listener)
@@ -107,7 +133,8 @@ actor EventUploader {
         sessionId: String,
         flowId: String,
         experiment: UpliftFunnelExperimentAssignment?,
-        flowVersion: Int?
+        flowVersion: Int?,
+        redacted: Set<String> = []
     ) -> [String: JSONValue] {
         var base = identityFields()
         base["event_id"] = .string(newEventId())
@@ -136,11 +163,15 @@ actor EventUploader {
             base["event_type"] = "screen_changed"
             base["screen_id"] = .string(to)
             base["payload"] = .object(["from": .string(from)])
+        // A redacted variable still reports that it was answered — that's what
+        // funnel drop-off is measured on — but never what the answer said.
         case .variableSet(_, let ts, let screenId, let name, let value):
             stamp(ts)
             base["event_type"] = "variable_set"
             base["screen_id"] = .string(screenId)
-            base["payload"] = .object(["name": .string(name), "value": value])
+            base["payload"] = redacted.contains(name)
+                ? .object(["name": .string(name), "redacted": .bool(true)])
+                : .object(["name": .string(name), "value": value])
         case .custom(_, let ts, let name, _):
             stamp(ts)
             base["event_type"] = "custom_event"
@@ -156,14 +187,23 @@ actor EventUploader {
             if let planId { payload["plan_id"] = .string(planId) }
             if let productId { payload["product_id"] = .string(productId) }
             base["payload"] = .object(payload)
+        // The completion event carries the whole answer set, so it's the other
+        // place values escape. Redacted names leave the map entirely and are
+        // listed separately — a placeholder inside `variables` would be
+        // indistinguishable from a boolean that is genuinely true.
         case .completed(_, let ts, let reason, let variables):
             stamp(ts)
             base["event_type"] = (reason == "completed" || reason == "completed:end")
                 ? "flow_completed" : "flow_abandoned"
-            base["payload"] = .object([
+            var payload: [String: JSONValue] = [
                 "reason": .string(reason),
-                "variables": .object(variables),
-            ])
+                "variables": .object(variables.filter { !redacted.contains($0.key) }),
+            ]
+            let held = variables.keys.filter(redacted.contains).sorted()
+            if !held.isEmpty {
+                payload["redacted"] = .array(held.map { .string($0) })
+            }
+            base["payload"] = .object(payload)
         }
         return base
     }
@@ -171,6 +211,7 @@ actor EventUploader {
     // MARK: - Enqueue
 
     func enqueue(_ event: [String: JSONValue]) {
+        guard trackingEnabled else { return }
         buffer.append(event)
         enforceCaps()
         persistDebounced()

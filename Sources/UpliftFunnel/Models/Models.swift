@@ -111,6 +111,16 @@ public struct FunnelVariable: Sendable, Equatable {
     public let type: FunnelVariableType
     public let defaultValue: JSONValue
 
+    /// Whether this answer stays on the device.
+    ///
+    /// The host app always receives the value — it's their user's data, and
+    /// collecting it is the point. This governs only what reaches the Uplift
+    /// API: a sensitive variable is reported as answered/not-answered, never
+    /// as its content. Set in the dashboard, and derived server-side from the
+    /// input that writes it, so flows authored before the flag existed arrive
+    /// classified.
+    public let sensitive: Bool
+
     public init(json: JSONValue) throws {
         guard let name = json["name"].stringValue else {
             throw FlowParseError("Variable is missing \"name\"")
@@ -122,6 +132,7 @@ public struct FunnelVariable: Sendable, Equatable {
         self.name = name
         self.type = type
         self.defaultValue = json["default"]
+        self.sensitive = json["sensitive"].boolValue == true
     }
 }
 

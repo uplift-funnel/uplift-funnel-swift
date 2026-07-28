@@ -17,7 +17,7 @@ it later without shipping an app update.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/uplift-funnel/uplift-funnel-swift.git", from: "0.5.0"),
+.package(url: "https://github.com/uplift-funnel/uplift-funnel-swift.git", from: "0.6.0"),
 // target dependency:
 .product(name: "UpliftFunnel", package: "uplift-funnel-swift")
 ```
@@ -90,6 +90,34 @@ UpliftFunnel.registerLinkHandler(
 Every purchase attempt/outcome is auto-tracked (`purchase_attempted`,
 `purchase_succeeded`, `purchase_cancelled`, …) so paywall drop-off is
 measurable server-side.
+
+### Consent and what leaves the device
+
+**Your code always gets every answer** — the completion callback hands you the
+full variable map, because it's your user's data. What follows is only about
+what reaches the Uplift API.
+
+Mark a variable **Private** in the dashboard and the SDK reports it as
+answered, never as its content. Use it for anything that identifies a person or
+describes their body — name, email, phone, birth date, weight. Leave it off for
+the bounded answers segmentation runs on (choice, rating, scale, toggle), which
+keep their values. The server derives the flag from the input that writes each
+variable, so existing flows arrive classified.
+
+```swift
+await UpliftFunnel.configure(
+    apiKey: "fnl_pk_…",
+    // Start with analytics off and turn it on when the user consents.
+    trackingEnabled: false,
+    // Redact these too, whatever the flow says.
+    redactVariables: ["referral_note"])
+
+UpliftFunnel.setTrackingEnabled(true) // consent granted
+```
+
+Turning tracking off drops whatever is already queued rather than holding it
+for later. Flows still fetch and render while it's off — gating that on consent
+would leave you with a blank screen instead of an onboarding.
 
 ### Product catalog (paywall display)
 

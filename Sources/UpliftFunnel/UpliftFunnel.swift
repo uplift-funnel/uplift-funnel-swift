@@ -89,6 +89,14 @@ public enum UpliftFunnel {
     ///   to `https://api.upliftfunnel.com`. Must be an absolute http(s) URL;
     ///   cleartext `http://` is accepted in debug builds only, so a release
     ///   build can't ship the API key and the event stream in the clear.
+    /// - `trackingEnabled` — pass `false` to start with analytics off and
+    ///   turn it on once the user consents (see `setTrackingEnabled`). Flows
+    ///   still fetch and render either way: gating the render on consent would
+    ///   leave the app with nothing to show.
+    /// - `redactVariables` — extra variable names whose values never leave the
+    ///   device, on top of the ones the flow itself declares sensitive. Your
+    ///   lever for a flow you haven't re-authored yet, and for variables you
+    ///   pass in yourself via `userVariables`.
     /// - `bundleId` — your app's bundle id, sent as `X-Uplift-Bundle-Id` on
     ///   every request so the server can pin your API key to this app — a
     ///   leaked key becomes useless anywhere else. Defaults to
@@ -101,11 +109,14 @@ public enum UpliftFunnel {
         apiKey: String,
         serverUrl: String? = nil,
         appVersion: String? = nil,
-        bundleId: String? = nil
+        bundleId: String? = nil,
+        trackingEnabled: Bool = true,
+        redactVariables: Set<String> = []
     ) async {
         await configureInternal(
             apiKey: apiKey, serverUrl: serverUrl, appVersion: appVersion,
-            bundleId: bundleId)
+            bundleId: bundleId, trackingEnabled: trackingEnabled,
+            redactVariables: redactVariables)
     }
 
     /// Test seam: also injects the URLSession and the UserDefaults suite.
@@ -114,6 +125,8 @@ public enum UpliftFunnel {
         serverUrl: String? = nil,
         appVersion: String? = nil,
         bundleId: String? = nil,
+        trackingEnabled: Bool = true,
+        redactVariables: Set<String> = [],
         urlSession: URLSession? = nil,
         defaults: UserDefaults = .standard
     ) async {
@@ -177,6 +190,8 @@ public enum UpliftFunnel {
         // Auto-detect the host bundle id (unlike Flutter, iOS can) so the
         // server-side key pinning works without any host wiring.
         s.bundleId = bundleId ?? Bundle.main.bundleIdentifier
+        s.trackingEnabled = trackingEnabled
+        s.redactVariables = redactVariables
         s.identity.activeApiKey = apiKey.isEmpty ? nil : apiKey
 
         // Restore persisted identity/attribution and ensure the anonymous
@@ -186,6 +201,9 @@ public enum UpliftFunnel {
         s.rebuildEventContext()
 
         s.uploader = s.makeUploader()
+        // Applied before restore(): starting with consent off must not pull a
+        // previous run's queue back into memory.
+        await s.uploader?.setTrackingEnabled(trackingEnabled)
         // Restore any events persisted from a previous run.
         await s.uploader?.restore()
         s.registerLifecycleObserver()
@@ -487,6 +505,31 @@ public enum UpliftFunnel {
     static func lookupPhotoUploadHandler() -> PhotoUploadHandler? { state?.photoUploadHandler }
     static func lookupProducts() -> [String: UpliftFunnelProduct] { state?.products ?? [:] }
 
+    /// Whether analytics are currently being collected.
+    public static var isTrackingEnabled: Bool { state?.trackingEnabled ?? true }
+
+    /// Turn analytics collection on or off — the consent switch.
+    ///
+    /// Off drops what's already queued rather than holding it: consent
+    /// withdrawn isn't consent deferred, and a surviving queue would upload
+    /// the very events the user just refused. Nothing is buffered while off,
+    /// so turning it back on starts clean.
+    ///
+    /// Flows keep fetching and rendering either way — gating the render on
+    /// consent would leave the app with a blank screen instead of an
+    /// onboarding. Pass `trackingEnabled: false` to `configure` to start off.
+    ///
+    /// ```swift
+    /// UpliftFunnel.setTrackingEnabled(await consent.analyticsGranted())
+    /// ```
+    public static func setTrackingEnabled(_ enabled: Bool) {
+        guard let s = state else { return }
+        s.trackingEnabled = enabled
+        if let uploader = s.uploader {
+            Task { await uploader.setTrackingEnabled(enabled) }
+        }
+    }
+
     /// Drain the in-memory event uploader buffer. Usually unnecessary — the
     /// uploader auto-flushes on its own cadence and on app background.
     public static func flushEvents() async {
@@ -604,6 +647,12 @@ final class FunnelState {
     var restoreHandler: RestoreHandler?
     var photoUploadHandler: PhotoUploadHandler?
     var linkHandler: LinkHandler?
+
+    /// Consent switch — see `UpliftFunnel.setTrackingEnabled`.
+    var trackingEnabled = true
+
+    /// Extra names redacted on top of the flow's own `sensitive` variables.
+    var redactVariables: Set<String> = []
 
     /// Schemes `UpliftFunnel.openLink` will forward. Replaced wholesale by
     /// `registerLinkHandler`'s `allowedSchemes`.
@@ -729,6 +778,7 @@ final class FunnelState {
         }
         return EventUploader(config: EventUploaderConfig(
             endpoint: endpoint,
+            redactVariables: redactVariables,
             apiKeyProvider: { identity.activeApiKey ?? "" },
             bundleIdProvider: { bundleId },
             userIdProvider: { identity.userId },
@@ -808,11 +858,17 @@ final class FunnelState {
         let flowId = session.flow.id
         let experiment = session.experiment
         let flowVersion = session.flowVersion
+        // Resolved once per session rather than per event: the flow's variable
+        // declarations don't change mid-session, and this runs on every
+        // keystroke commit.
+        let redacted = Set(session.flow.variables.filter(\.sensitive).map(\.name))
+            .union(redactVariables)
         lastBoundToken = session.addEventListener { [weak uploader] event in
             guard let uploader else { return }
             let payload = uploader.serialize(
                 event, sessionId: sessionId, flowId: flowId,
-                experiment: experiment, flowVersion: flowVersion)
+                experiment: experiment, flowVersion: flowVersion,
+                redacted: redacted)
             Task { await uploader.enqueue(payload) }
         }
     }
