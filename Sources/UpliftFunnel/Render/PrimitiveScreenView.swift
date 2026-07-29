@@ -11,18 +11,24 @@ let noBackArchetypes: Set<String> = ["plan_picker", "paywall_handoff"]
 
 /// Depth-first finds the first `plan_picker` node's `bind.save_to` — the
 /// variable the screen's `purchase` action reads the selected plan id from.
-/// Node types that can move the user forward on their own.
+/// Every node type the user can act on — exits AND inputs.
 ///
-/// `choice` is conditional: a plain one waits for a CTA, an `auto_advance` one
-/// navigates on tap. `progress` is deliberately absent — it's the node asking
-/// this question.
-private let kExitNodeTypes: Set<String> = ["button", "signin", "swipe", "plan_picker"]
+/// Deliberately wider than "can advance": a screen carrying a question must
+/// never auto-advance past it, even though a `choice` without `auto_advance`
+/// can't move the user forward by itself. `progress` is absent because it's the
+/// node asking whether it has to carry the screen.
+private let kInteractiveNodeTypes: Set<String> = [
+    "button", "signin", "swipe", "plan_picker", "choice", "text_field",
+    "number_field", "date_field", "slider", "scale", "rating", "toggle",
+    "photo_upload", "permission",
+]
 
-/// Whether anything on this screen can advance it.
+/// Whether this screen offers the user anything to do.
 ///
-/// A screen whose only content is a loading indicator has exactly one sensible
-/// reading, and answering "no" is what keeps it from hanging when the author
-/// forgot `advance_on_complete`.
+/// False means a purely presentational screen — a title, some copy, a loading
+/// indicator — which has exactly one sensible reading. Answering "no" is what
+/// keeps such a screen from hanging when the author forgot
+/// `advance_on_complete`.
 func screenHasExit(_ screen: PrimScreen) -> Bool {
     if screen.topBar["close"].boolValue == true { return true }
     if !screen.topBar["skip"].isNull { return true }
@@ -31,10 +37,7 @@ func screenHasExit(_ screen: PrimScreen) -> Bool {
     guard let root = screen.root else { return true }
 
     func visit(_ node: PrimNode) -> Bool {
-        if kExitNodeTypes.contains(node.type) { return true }
-        if node.type == "choice", node.props["auto_advance"].boolValue == true {
-            return true
-        }
+        if kInteractiveNodeTypes.contains(node.type) { return true }
         return node.children.contains(where: visit)
     }
     return visit(root)
