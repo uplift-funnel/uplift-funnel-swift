@@ -34,13 +34,19 @@ struct PrimitiveScreenHost: View {
 
     var body: some View {
         GeometryReader { geo in
+            // ONE answer, used for both the bar and the box below it. Reading
+            // a constant here while the bar drew something else is what made
+            // the body 24pt short on every screen with no back or close.
+            let canGoBack = showBack ?? session.canGoBack
+            let chrome = TopBarChrome.height(for: screenChrome(), canGoBack: canGoBack)
             VStack(spacing: 0) {
                 TopBarChrome(
                     topBar: screenChrome(),
                     palette: theme.colors,
-                    canGoBack: showBack ?? session.canGoBack,
+                    canGoBack: canGoBack,
                     onBack: { session.goBack() },
-                    onClose: { session.handleAction("close", fromScreenId: screen.id) }
+                    onClose: { session.handleAction("close", fromScreenId: screen.id) },
+                    onSkip: { session.handleAction("next", fromScreenId: screen.id) }
                 )
                 PrimitiveScreenV3(
                     flow: primFlow.raw.flowDictionary,
@@ -51,7 +57,7 @@ struct PrimitiveScreenHost: View {
                     products: products,
                     size: CGSize(
                         width: geo.size.width,
-                        height: geo.size.height - TopBarChrome.height - geo.safeAreaInsets.top
+                        height: geo.size.height - chrome - geo.safeAreaInsets.top
                     ),
                     safeTop: geo.safeAreaInsets.top,
                     // Identity, not content: the flow dictionary cannot be

@@ -26,17 +26,47 @@ struct TopBarChrome: View {
     let canGoBack: Bool
     var onBack: () -> Void
     var onClose: () -> Void
+    var onSkip: () -> Void = {}
 
-    /// Matches the web's chrome bar so the two agree about how much room the
-    /// body starts with.
-    static let height: Double = 44
+    /// How much room the chrome takes, for a bar that may hold nothing.
+    ///
+    /// A LITERAL 44 until now, which put every screen without a back or close
+    /// button 24pt lower on the device than in the preview — and made the body
+    /// 24pt shorter, so a `fill` child and a pinned footer both landed wrong.
+    /// The web has always reserved 20 for an empty bar; this is the same rule,
+    /// and the two are held to it by a test rather than by both being read.
+    static func height(for bar: [String: Any]?, canGoBack: Bool) -> Double {
+        affordance(in: bar, canGoBack: canGoBack) ? 44 : 20
+    }
 
+    /// Whether anything is actually drawn in the bar.
+    static func affordance(in bar: [String: Any]?, canGoBack: Bool) -> Bool {
+        let backHidden = (bar?["back"] as? Bool) == false
+        return (canGoBack && !backHidden)
+            || (bar?["close"] as? Bool) == true
+            || (bar?["skip"] as? [String: Any])?["label"] is String
+            || bar?["title"] is String
+    }
+
+    /// Shown whenever the session CAN go back, unless the screen opts out.
+    ///
+    /// It used to require an explicit `back: true`, so a flow that said nothing
+    /// got a back button in the preview and none on the device — the opposite
+    /// default, on the one control every multi-screen flow relies on.
     private var showBack: Bool {
-        (topBar?["back"] as? Bool) == true && canGoBack
+        canGoBack && (topBar?["back"] as? Bool) != false
     }
 
     private var showClose: Bool {
         (topBar?["close"] as? Bool) == true
+    }
+
+    private var skipLabel: String? {
+        (topBar?["skip"] as? [String: Any])?["label"] as? String
+    }
+
+    private var title: String? {
+        topBar?["title"] as? String
     }
 
     private var tint: Color {
@@ -53,38 +83,61 @@ struct TopBarChrome: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            if showBack {
-                button(
-                    (topBar?["controls"] as? [String: Any])?["back_icon"] as? String ?? "‹",
-                    action: onBack
-                )
-                .accessibilityLabel("Back")
+        if Self.affordance(in: topBar, canGoBack: canGoBack) {
+            ZStack {
+                if let title {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(tint)
+                        .lineLimit(1)
+                        // Clear of both controls, so a long title truncates
+                        // rather than sliding under the chevron.
+                        .padding(.horizontal, 56)
+                }
+                HStack(spacing: 0) {
+                    if showBack {
+                        button(
+                            (topBar?["controls"] as? [String: Any])?["back_icon"] as? String ?? "‹",
+                            action: onBack
+                        )
+                        .accessibilityLabel("Back")
+                    }
+                    Spacer(minLength: 0)
+                    if showClose {
+                        button(
+                            (topBar?["controls"] as? [String: Any])?["close_icon"] as? String ?? "✕",
+                            action: onClose
+                        )
+                        .accessibilityLabel("Close")
+                    } else if let skipLabel {
+                        // Skip takes the DEFAULT transition, which is what the
+                        // web fires too — not a dismissal.
+                        button(skipLabel, size: 14, action: onSkip)
+                    }
+                }
             }
-            Spacer(minLength: 0)
-            if showClose {
-                button(
-                    (topBar?["controls"] as? [String: Any])?["close_icon"] as? String ?? "✕",
-                    action: onClose
-                )
-                .accessibilityLabel("Close")
-            }
+            .frame(height: 44)
+            .padding(.horizontal, 8)
+        } else {
+            // Reserved even when empty, so the body starts in the same place
+            // whether or not a screen offers a way back.
+            Color.clear.frame(height: 20)
         }
-        .frame(height: Self.height)
-        .padding(.horizontal, 8)
-        // Always present, even with nothing in it: the body's top has to be in
-        // the same place whether or not a screen offers a way back, or every
-        // screen in a flow starts at a different height.
     }
 
-    private func button(_ glyph: String, action: @escaping () -> Void) -> some View {
+    private func button(
+        _ glyph: String,
+        size: Double? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Text(glyph)
-                .font(.system(size: glyphSize))
+                .font(.system(size: size ?? glyphSize, weight: size == nil ? .regular : .medium))
                 .foregroundColor(tint)
                 // A 44pt target, which is the platform minimum and bigger than
-                // the glyph.
-                .frame(width: 44, height: 44)
+                // the glyph. A skip label needs its own width.
+                .frame(minWidth: 44, minHeight: 44)
+                .padding(.horizontal, size == nil ? 0 : 8)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
