@@ -12,7 +12,8 @@ final class ScreenModelCacheTests: XCTestCase {
     private func key(
         answers: [String: String] = [:],
         width: Double = 390,
-        screen: Int = 0
+        screen: Int = 0,
+        clockSecond: Int = 0
     ) -> ScreenModelKey {
         ScreenModelKey(
             flowVersion: "flow@1",
@@ -22,7 +23,8 @@ final class ScreenModelCacheTests: XCTestCase {
             products: [:],
             width: width,
             height: 743,
-            safeTop: 51
+            safeTop: 51,
+            clockSecond: clockSecond
         )
     }
 
@@ -51,6 +53,7 @@ final class ScreenModelCacheTests: XCTestCase {
             ("an answer", key(answers: ["plan": "monthly"])),
             ("a width", key(width: 320)),
             ("a screen index", key(screen: 1)),
+            ("a countdown's second", key(clockSecond: 42)),
         ]
         for (what, changed) in cases {
             let cache = ScreenModelCache()
@@ -76,9 +79,53 @@ final class ScreenModelCacheTests: XCTestCase {
         XCTAssertEqual(
             Set(fields),
             ["flowVersion", "screenIndex", "locale", "answers", "products",
-             "width", "height", "safeTop"],
+             "width", "height", "safeTop", "clockSecond"],
             "the model key changed shape; check that the new field really "
             + "affects LAYOUT and not just paint"
         )
+    }
+
+    /// A screen with no countdown must never pay for one.
+    ///
+    /// `clockSecond` is the only key field that moves on its own, so it is the
+    /// only one that could quietly undo the memo — a screen re-solving once a
+    /// second forever for a feature it does not use. The view leaves it at zero
+    /// unless the document actually carries a `behavior.countdown`.
+    func testAScreenWithoutACountdownKeepsItsCache() {
+        let cache = ScreenModelCache()
+        for _ in 0..<20 { _ = cache.model(for: key()) { self.stub() } }
+        XCTAssertEqual(cache.builds, 1, "a screen with no countdown re-solved")
+    }
+
+    /// And one WITH a countdown rebuilds once a second, not once a tick.
+    ///
+    /// The timer fires four times a second; three of those land in the same
+    /// whole second and must hit the cache, or the ticking costs four solves
+    /// per second instead of one.
+    func testACountdownRebuildsOncePerSecondNotPerTick() {
+        let cache = ScreenModelCache()
+        // 0ms, 250ms, 500ms, 750ms, 1000ms — four ticks in second 0, one in second 1.
+        for ms in [0, 250, 500, 750, 1000] {
+            _ = cache.model(for: key(clockSecond: ms / 1000)) { self.stub() }
+        }
+        XCTAssertEqual(cache.builds, 2, "the countdown re-solved on every tick, not every second")
+    }
+
+    /// The countdown scan is asked on every body evaluation and answered once.
+    func testTheCountdownScanIsMemoized() {
+        let cache = ScreenModelCache()
+        var scans = 0
+        for _ in 0..<10 {
+            _ = cache.hasCountdown(screenIndex: 0) {
+                scans += 1
+                return true
+            }
+        }
+        XCTAssertEqual(scans, 1, "the raw-JSON scan ran on every body evaluation")
+        _ = cache.hasCountdown(screenIndex: 1) {
+            scans += 1
+            return false
+        }
+        XCTAssertEqual(scans, 2, "a different screen reused the previous screen's answer")
     }
 }

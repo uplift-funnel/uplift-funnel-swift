@@ -42,18 +42,33 @@ public struct LayoutInput: Sendable {
     /// caller should not have to know where the theme lives.
     public var tokens: [String: String]
 
+    /// The clock, as an INPUT rather than a call to `Date()`.
+    ///
+    /// `behavior.countdown` publishes a time that changes every second into
+    /// text that gets measured, so the decoder would stop being a pure function
+    /// of its arguments the moment it read the clock itself — and the golden
+    /// route could never record a stable frame. Epoch milliseconds; zero means
+    /// the caller has no clock to give.
+    public var now: Double
+    /// When the screen being laid out appeared — what `duration_ms` counts from.
+    public var screenEnteredAt: Double
+
     public init(
         selections: [String: String] = [:],
         variables: [String: String] = [:],
         catalog: [String: String] = [:],
         products: [String: [String: String]] = [:],
-        tokens: [String: String] = [:]
+        tokens: [String: String] = [:],
+        now: Double = 0,
+        screenEnteredAt: Double = 0
     ) {
         self.selections = selections
         self.variables = variables
         self.catalog = catalog
         self.products = products
         self.tokens = tokens
+        self.now = now
+        self.screenEnteredAt = screenEnteredAt
     }
 }
 
@@ -134,6 +149,15 @@ public enum LayoutDecoder {
             let info = input.products[ref] ?? [:]
             for key in ["price", "period", "trial", "original_price", "savings"] {
                 input.variables["product.\(key)"] = info[key] ?? ""
+            }
+        }
+
+        // A countdown box scopes `{{countdown.*}}` the same way. Same mechanism
+        // as `product` on purpose: the schema says the units are drawn by an
+        // ordinary preset tree, so they have to arrive as ordinary text.
+        if let spec = behavior?["countdown"] as? [String: Any] {
+            for (key, value) in countdownVars(spec, input: input) {
+                input.variables[key] = value
             }
         }
 
@@ -533,6 +557,44 @@ public enum LayoutDecoder {
               let list = try? JSONSerialization.jsonObject(with: data) as? [Any]
         else { return v }
         return list.map { "\($0)" }.joined(separator: ", ")
+    }
+
+    /// `{{countdown.days}}` and friends, for one `behavior.countdown`.
+    ///
+    /// Zero-padded to two digits, because a paywall's timer is read as a clock
+    /// and an unpadded "9" beside "58" jumps a whole character width every ten
+    /// seconds — which, since the text is measured, moves the layout with it.
+    /// Days are not padded: a count, not a clock field.
+    static func countdownVars(_ spec: [String: Any], input: LayoutInput) -> [String: String] {
+        let deadline: Double
+        if let target = spec["target"] as? String, let at = iso8601(target) {
+            deadline = at
+        } else {
+            deadline = input.screenEnteredAt + ((spec["duration_ms"] as? NSNumber)?.doubleValue ?? 0)
+        }
+        // A zero clock means the caller has no time to give (the golden route),
+        // so the countdown shows its full length rather than a deadline long past.
+        let left = max(0, input.now == 0 ? deadline - input.screenEnteredAt : deadline - input.now)
+        let total = Int(left / 1000)
+        func pad(_ n: Int) -> String { n < 10 ? "0\(n)" : "\(n)" }
+        return [
+            "countdown.days": "\(total / 86400)",
+            "countdown.hours": pad(total / 3600 % 24),
+            "countdown.minutes": pad(total / 60 % 60),
+            "countdown.seconds": pad(total % 60),
+        ]
+    }
+
+    /// Epoch milliseconds for an ISO-8601 instant, or nil.
+    ///
+    /// Two formatters because `.withFractionalSeconds` REJECTS a string without
+    /// them rather than tolerating it, and the schema's example
+    /// (`2026-01-01T00:00:00Z`) has none.
+    private static func iso8601(_ s: String) -> Double? {
+        let f = ISO8601DateFormatter()
+        if let d = f.date(from: s) { return d.timeIntervalSince1970 * 1000 }
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.date(from: s).map { $0.timeIntervalSince1970 * 1000 }
     }
 
     // MARK: - primitives

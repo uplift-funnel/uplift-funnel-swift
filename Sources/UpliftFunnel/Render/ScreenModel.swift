@@ -54,6 +54,14 @@ struct ScreenModelKey: Hashable {
     var width: Double
     var height: Double
     var safeTop: Double
+    /// Whole seconds of the clock, for a screen carrying a countdown; 0 for
+    /// every other screen.
+    ///
+    /// SECONDS, not milliseconds, and only when there is something to tick:
+    /// keying on the raw clock would miss the cache on every frame and undo
+    /// the memo entirely, and keying on it for screens without a countdown
+    /// would do that to screens that have no reason to re-solve at all.
+    var clockSecond: Int = 0
 }
 
 /// A one-entry memo, held by the view across body evaluations.
@@ -70,9 +78,24 @@ struct ScreenModelKey: Hashable {
 final class ScreenModelCache {
     private var key: ScreenModelKey?
     private var model: ScreenModel?
+    private var countdownFor: Int?
+    private var countdown = false
 
     /// Hit count, for the test that proves the cache is doing anything.
     private(set) var builds = 0
+
+    /// Whether this screen carries a `behavior.countdown`, computed once.
+    ///
+    /// Asked on every body evaluation and answered by scanning raw JSON, so it
+    /// is memoized alongside the model. It decides whether a timer is created
+    /// at all — a screen without a countdown must not be woken four times a
+    /// second for a feature it does not use.
+    func hasCountdown(screenIndex: Int, compute: () -> Bool) -> Bool {
+        if countdownFor == screenIndex { return countdown }
+        countdown = compute()
+        countdownFor = screenIndex
+        return countdown
+    }
 
     func model(for key: ScreenModelKey, build: () -> ScreenModel?) -> ScreenModel? {
         if key == self.key, let model { return model }

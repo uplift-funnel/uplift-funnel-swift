@@ -1,3 +1,4 @@
+import Combine
 import CoreGraphics
 import SwiftUI
 import UpliftLayout
@@ -36,8 +37,57 @@ struct PrimitiveScreenV3: View {
     /// Survives body evaluations; see `ScreenModelCache`.
     @State private var cache = ScreenModelCache()
 
+    /// The clock a `behavior.countdown` counts against, in epoch milliseconds.
+    ///
+    /// Held here rather than read inside the decoder, so the decoder stays a
+    /// pure function of its arguments and the same document laid out twice
+    /// gives the same frames. Zero until the screen appears, which is what
+    /// makes a countdown show its full length before the first tick instead of
+    /// flashing a deadline long past.
+    @State private var clock = (now: 0.0, entered: 0.0)
+
+    /// Only a screen that carries one pays for a timer.
+    private var ticks: Bool {
+        cache.hasCountdown(screenIndex: screenIndex) {
+            Self.carriesCountdown(screen(at: screenIndex)?["root"])
+        }
+    }
+
+    /// Four times a second, not once: a 1s timer drifts against the wall clock
+    /// and visibly skips a digit. `Empty` for a screen with no countdown — the
+    /// publisher is never created, so nothing is scheduled.
+    private var tick: AnyPublisher<Date, Never> {
+        ticks
+            ? Timer.publish(every: 0.25, on: .main, in: .common).autoconnect().eraseToAnyPublisher()
+            : Empty<Date, Never>().eraseToAnyPublisher()
+    }
+
     private var input: LayoutInput {
-        LayoutInput(selections: answers, variables: answers, products: products)
+        LayoutInput(
+            selections: answers,
+            variables: answers,
+            products: products,
+            now: clock.now,
+            screenEnteredAt: clock.entered
+        )
+    }
+
+    private func screen(at index: Int) -> [String: Any]? {
+        (flow["screens"] as? [[String: Any]])?.indices.contains(index) == true
+            ? (flow["screens"] as? [[String: Any]])?[index]
+            : nil
+    }
+
+    /// Does any node in this raw subtree carry `behavior.countdown`?
+    ///
+    /// Raw JSON rather than a decoded tree, because the answer is needed BEFORE
+    /// the decode — the decode takes the clock as an input, and the clock only
+    /// runs if the answer is yes.
+    private static func carriesCountdown(_ node: Any?) -> Bool {
+        guard let node = node as? [String: Any] else { return false }
+        if (node["behavior"] as? [String: Any])?["countdown"] != nil { return true }
+        guard let children = node["children"] as? [Any] else { return false }
+        return children.contains { carriesCountdown($0) }
     }
 
     /// The screen, rebuilt whenever an answer changes.
@@ -59,7 +109,8 @@ struct PrimitiveScreenV3: View {
             products: products,
             width: size.width,
             height: size.height,
-            safeTop: safeTop
+            safeTop: safeTop,
+            clockSecond: ticks ? Int(clock.now / 1000) : 0
         )) {
             let input = input
             guard let tree = LayoutDecoder.layoutTree(
@@ -133,6 +184,18 @@ struct PrimitiveScreenV3: View {
                 }
             }
             .frame(width: size.width, height: size.height, alignment: .topLeading)
+            .onAppear {
+                // `duration_ms` counts from screen entry, so "when this
+                // appeared" is exactly the number wanted — and reading it here
+                // rather than in an initializer keeps a screen that is never
+                // shown from starting its clock.
+                guard ticks, clock.entered == 0 else { return }
+                let now = Date().timeIntervalSince1970 * 1000
+                clock = (now: now, entered: now)
+            }
+            .onReceive(tick) { date in
+                clock.now = date.timeIntervalSince1970 * 1000
+            }
         } else {
             // A screen that will not lay out is a bug worth seeing, not a blank
             // the user silently stares at.
