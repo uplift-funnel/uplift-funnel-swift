@@ -119,8 +119,27 @@ final class LayoutPass {
         )
         if let hit = memo[key] { return hit }
 
-        let w = try resolvedWidth(n, available: available)
-        let h = try resolvedHeight(n, available: available, width: w)
+        var w = clamp(try resolvedWidth(n, available: available), n.minWidth, n.maxWidth)
+        var h: Double
+
+        // ASPECT derives whichever axis is not otherwise given. CSS
+        // `aspect-ratio: N` means width ÷ height, so a 1.5 image that is 300
+        // wide is 200 tall — and the editor puts 1.5 on every image it makes,
+        // which is why ignoring this was shipping a wrong height for the most
+        // common node there is.
+        if let aspect = n.aspect, aspect > 0, case .hug = n.height {
+            h = w / aspect
+        } else {
+            h = try resolvedHeight(n, available: available, width: w)
+        }
+        h = clamp(h, n.minHeight, n.maxHeight)
+        // A clamped height feeds back into an aspect-driven width, the way CSS
+        // resolves the pair — otherwise `aspect` plus `maxHeight` produces a
+        // box whose sides do not match the ratio it was given.
+        if let aspect = n.aspect, aspect > 0, case .hug = n.width, case .hug = n.height {
+            w = clamp(h * aspect, n.minWidth, n.maxWidth)
+        }
+
         let size = Size2D(
             width: quantised(w, when: n.width),
             height: quantised(h, when: n.height)
@@ -148,6 +167,16 @@ final class LayoutPass {
     private func quantised(_ value: Double, when size: Size) -> Double {
         if case .hug = size { return luCeil(value) }
         return lu(value)
+    }
+
+    /// `max` first, then `min` — the CSS order, in which a min-width larger
+    /// than the max-width wins. Backwards, and deliberately so: the floor is a
+    /// promise about the content fitting, and the ceiling is only a preference.
+    private func clamp(_ value: Double, _ low: Double?, _ high: Double?) -> Double {
+        var out = value
+        if let high { out = min(out, high) }
+        if let low { out = max(out, low) }
+        return out
     }
 
     private func resolvedWidth(_ n: LayoutNode, available: Size2D) throws -> Double {
@@ -340,6 +369,7 @@ final class LayoutPass {
         // the children's content differs in size.
         var bases: [Double] = []
         var growWeights: [Double] = []
+        var marginMain = 0.0
         for c in flow {
             let mainFill = horizontal ? c.width == .fill : c.height == .fill
             let weight = c.grow ?? (mainFill ? 1 : 0)
@@ -350,9 +380,14 @@ final class LayoutPass {
                 let s = try intrinsicSize(c, available: available)
                 bases.append(horizontal ? s.width : s.height)
             }
+            // MARGIN is outside the border box, so it takes main-axis room the
+            // children then have less of. Added to the used space rather than
+            // to the base, because a growing child's base is zero and its
+            // margin is not.
+            marginMain += horizontal ? c.margin.horizontal : c.margin.vertical
         }
 
-        let free = mainExtent - (bases.reduce(0, +) + gaps)
+        let free = mainExtent - (bases.reduce(0, +) + gaps + marginMain)
         let totalWeight = growWeights.reduce(0, +)
         // Negative free space is NOT redistributed. css.ts sets `flexShrink: 0`
         // on any explicit main-axis size, so a 300pt hero inside a scrolling
@@ -383,11 +418,33 @@ final class LayoutPass {
             horizontal: horizontal
         )
 
-        // Where the run starts, when it does not fill the main axis.
+        // Where the run starts, and how the leftover is shared.
         let mainAlign = (horizontal ? n.alignX : n.alignY) ?? .start
-        let leftover = mainExtent - (mains.reduce(0, +) + gaps)
+        let marginTotal = flow.reduce(0.0) {
+            $0 + (horizontal ? $1.margin.horizontal : $1.margin.vertical)
+        }
+        let leftover = mainExtent - (mains.reduce(0, +) + gaps + marginTotal)
         var cursor = (horizontal ? content.x : content.y)
-        if leftover > 0 {
+        // `distribute` is CSS `justify-content` past start/centre/end, and it
+        // takes precedence over the alignment: a row that says `between` has
+        // already answered where its children go.
+        var spread = 0.0
+        if leftover > 0, flow.count > 1, n.distribute != .packed {
+            switch n.distribute {
+            case .between:
+                spread = leftover / Double(flow.count - 1)
+            case .around:
+                // Half a gap at each end, a full gap between — each child gets
+                // an equal margin, so the outer ones look half as spaced.
+                spread = leftover / Double(flow.count)
+                cursor += lu(spread / 2)
+            case .evenly:
+                spread = leftover / Double(flow.count + 1)
+                cursor += lu(spread)
+            case .packed:
+                break
+            }
+        } else if leftover > 0 {
             switch mainAlign {
             case .center: cursor += lu(leftover / 2)
             case .end: cursor += leftover
@@ -397,6 +454,8 @@ final class LayoutPass {
 
         for (i, child) in flow.enumerated() {
             let mainSize = mains[i]
+            // The leading margin pushes this child along before it is placed.
+            cursor += horizontal ? child.margin.left : child.margin.top
             // The cross axis defaults to STRETCH, which is CSS's `align-items`
             // default and what css.ts emits when the author said nothing. It is
             // why a column's children are as wide as the column without asking.
@@ -414,13 +473,22 @@ final class LayoutPass {
                 ? isExplicit(child.height)
                 : isExplicit(child.width)
 
-            let crossSize: Double
+            var crossSize: Double
             if crossFill || (crossAlign == .stretch && !explicitCross) {
                 crossSize = crossExtent
             } else {
                 crossSize = childCrossWanted
             }
-            var crossPos = horizontal ? content.y : content.x
+            // A STRETCHED child is still bounded. `align-items: stretch` hands
+            // the container's cross size to the child, but `max-width` clamps
+            // what it may accept — so a card with `maxWidth: 400` in a 600pt
+            // column is 400 wide, not 600. Clamping only inside `intrinsicSize`
+            // missed this entirely, because stretch replaces that answer.
+            crossSize = horizontal
+                ? clamp(crossSize, child.minHeight, child.maxHeight)
+                : clamp(crossSize, child.minWidth, child.maxWidth)
+            var crossPos = (horizontal ? content.y : content.x)
+                + (horizontal ? child.margin.top : child.margin.left)
             if crossSize < crossExtent {
                 switch crossAlign {
                 case .center: crossPos += lu((crossExtent - crossSize) / 2)
@@ -442,7 +510,8 @@ final class LayoutPass {
                 cursor -= viewport.safeTop
             }
             try place(child, into: r, viewport: viewport, out: &out)
-            cursor += mainSize + n.gapMain
+            cursor += mainSize + n.gapMain + spread
+            cursor += horizontal ? child.margin.right : child.margin.bottom
         }
     }
 
@@ -506,17 +575,21 @@ final class LayoutPass {
         var w = size.width, h = size.height
         if child.width == .fill { w = content.width }
         if child.height == .fill { h = content.height }
+        // Same bound as the flow path: filling a stack does not license a child
+        // to exceed a size it declared it would not.
+        w = clamp(w, child.minWidth, child.maxWidth)
+        h = clamp(h, child.minHeight, child.maxHeight)
         var x = content.x, y = content.y
         switch node.alignX ?? .start {
         case .center: x += lu((content.width - w) / 2)
         case .end: x = content.maxX - w
-        case .stretch: w = content.width
+        case .stretch: w = clamp(content.width, child.minWidth, child.maxWidth)
         case .start: break
         }
         switch node.alignY ?? .start {
         case .center: y += lu((content.height - h) / 2)
         case .end: y = content.maxY - h
-        case .stretch: h = content.height
+        case .stretch: h = clamp(content.height, child.minHeight, child.maxHeight)
         case .start: break
         }
         return Rect(x: x, y: y, width: w, height: h)

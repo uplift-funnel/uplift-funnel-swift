@@ -26,6 +26,10 @@ public enum Align: String, Sendable {
     case start, center, end, stretch
 }
 
+public enum Distribute: String, Sendable, Equatable {
+    case packed, between, around, evenly
+}
+
 public enum ScrollAxis: String, Sendable, Equatable {
     case vertical, horizontal
 }
@@ -52,6 +56,27 @@ public struct LayoutNode: Sendable {
     public var z: Int?
     public var ignoreSafeArea: Bool = false
 
+    /// Bounds on the resolved size, in points.
+    ///
+    /// The web has emitted these since v3 shipped and neither solver read them,
+    /// so a document with a `maxWidth` laid out one way in the preview and
+    /// another on the device — silently, because an ignored property looks
+    /// exactly like a property nobody set.
+    public var minWidth: Double?
+    public var maxWidth: Double?
+    public var minHeight: Double?
+    public var maxHeight: Double?
+
+    /// Width ÷ height. Derives whichever axis is not otherwise determined.
+    ///
+    /// Not exotic: the editor's own image factory sets `aspect: 1.5` on every
+    /// image an author adds, so ignoring it was shipping a wrong height for the
+    /// most common node there is.
+    public var aspect: Double?
+
+    /// Space OUTSIDE the border box, pushing siblings away.
+    public var margin: Edges = .zero
+
     /// Border width, in points, on every edge.
     ///
     /// This is LAYOUT, not paint. The web renderer sets `box-sizing: border-box`
@@ -67,6 +92,9 @@ public struct LayoutNode: Sendable {
     public var gapMain: Double = 0
     public var alignX: Align?
     public var alignY: Align?
+    /// How leftover main-axis space is shared — CSS `justify-content` beyond
+    /// start/centre/end.
+    public var distribute: Distribute = .packed
 
     // style — what the node looks like. Carried alongside the layout facts
     // rather than in a parallel tree, because a state delta re-resolves both at

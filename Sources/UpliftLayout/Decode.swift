@@ -146,6 +146,12 @@ public enum LayoutDecoder {
             n.grow = (s["grow"] as? NSNumber)?.doubleValue
             n.z = (s["z"] as? NSNumber)?.intValue
             n.ignoreSafeArea = (s["ignoreSafeArea"] as? Bool) ?? false
+            n.minWidth = dbl(s["minWidth"])
+            n.maxWidth = dbl(s["maxWidth"])
+            n.minHeight = dbl(s["minHeight"])
+            n.maxHeight = dbl(s["maxHeight"])
+            n.aspect = dbl(s["aspect"])
+            n.margin = edges(s["margin"])
             n.anchorX = (s["anchorX"] as? String).flatMap(Align.init(rawValue:))
             n.anchorY = (s["anchorY"] as? String).flatMap(Align.init(rawValue:))
             if let i = s["inset"] as? [String: Any] {
@@ -165,6 +171,8 @@ public enum LayoutDecoder {
             n.padding = edges(l["padding"])
             n.alignX = (l["alignX"] as? String).flatMap(Align.init(rawValue:))
             n.alignY = (l["alignY"] as? String).flatMap(Align.init(rawValue:))
+            n.distribute = (l["distribute"] as? String)
+                .flatMap(Distribute.init(rawValue:)) ?? .packed
             if let g = dbl(l["gap"]) {
                 n.gapMain = g
             } else if let g = l["gap"] as? [String: Any] {
