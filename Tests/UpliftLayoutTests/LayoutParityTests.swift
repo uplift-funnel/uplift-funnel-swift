@@ -144,16 +144,17 @@ final class LayoutParityTests: XCTestCase {
             "\(shot): the decoder produced no tree"
         )
 
-        // The body the web measured into. Width comes from the recorded root;
-        // HEIGHT is the device's, not the root's — a `position: fixed` footer
-        // pins to the screen, and a root that hugs its content is shorter than
-        // the screen it sits on. Using the root's height put the footer 485pt
-        // too high.
-        let rootFrame = try XCTUnwrap(expected.first { ($0["path"] as? String) == "" })
+        // The box the document was laid out INTO, recorded by the oracle
+        // rather than guessed. It is not a constant, which is what the guess of
+        // 743 got wrong: a screen whose `top_bar` shows a back chevron gets a
+        // 24pt chrome bar, so the body is 719 there — and the pinned footer,
+        // which resolves against exactly this box, sat 24pt low on every screen
+        // that has one.
+        let recorded = try XCTUnwrap(base["viewport"] as? [String: Any], "\(shot): no viewport")
         let viewport = Viewport(
             size: Size2D(
-                width: (rootFrame["w"] as? NSNumber)?.doubleValue ?? 390,
-                height: 743
+                width: (recorded["width"] as? NSNumber)?.doubleValue ?? 390,
+                height: (recorded["height"] as? NSNumber)?.doubleValue ?? 743
             ),
             safeTop: 51
         )
@@ -209,13 +210,13 @@ final class LayoutParityTests: XCTestCase {
         // Raise these as the solver improves. Never lower one to make a run
         // green — that is the whole point of writing them down.
         let floor: [String: Int] = [
-            "web-01-paywall-default": 25,   // of 39
-            "web-02-paywall-monthly": 25,   // of 39
+            "web-01-paywall-default": 27,   // of 39
+            "web-02-paywall-monthly": 27,   // of 39
             "web-03-welcome": 7,            // of 8
-            "web-04-name-input": 7,         // of 9
+            "web-04-name-input": 8,         // of 9
             "web-05-focus-unanswered": 19,  // of 20
             "web-06-focus-answered": 22,    // of 23
-            "web-07-name-invalid": 7,       // of 9
+            "web-07-name-invalid": 8,       // of 9
         ]
         var report: [String] = []
         for (shot, want) in floor.sorted(by: { $0.key < $1.key }) {
@@ -273,20 +274,20 @@ final class LayoutParityTests: XCTestCase {
     func testFrameParityWithCoreTextShaping() throws {
         // What each shot's REMAINING failures are, so the floors below mean
         // something. Raise them as these close; never lower one.
-        //   web-01/02  the root hugs where the viewport should bound it, and a
-        //              14pt radio dot the decoder sizes from the wrong property
-        //   web-04/07  the pinned footer's safe-area bookkeeping, 24pt
-        //   web-05/06  emoji, ±1pt and irreducible — Apple Color Emoji is a
-        //              bitmap face whose advance is already a whole number, so
-        //              there is no finer value to round the browser's way
+        // Every remaining failure is now ONE THING: the emoji point. The worst
+        // offset across all seven shots is 1.000, which is Apple Color Emoji's
+        // advance quantisation — a bitmap face whose advance is already a whole
+        // number, so there is no finer value to round the browser's way. Three
+        // shots are exact; the two focus screens carry it on three icons each
+        // and it cascades to their siblings.
         let floor: [String: Int] = [
-            "web-01-paywall-default": 31,   // of 39
-            "web-02-paywall-monthly": 31,   // of 39
+            "web-01-paywall-default": 33,   // of 39
+            "web-02-paywall-monthly": 33,   // of 39
             "web-03-welcome": 8,            // of 8 — exact
-            "web-04-name-input": 7,         // of 9
+            "web-04-name-input": 9,         // of 9 — exact
             "web-05-focus-unanswered": 8,   // of 20
             "web-06-focus-answered": 9,     // of 23
-            "web-07-name-invalid": 7,       // of 9
+            "web-07-name-invalid": 9,       // of 9 — exact
         ]
         var report: [String] = []
         for (shot, want) in floor.sorted(by: { $0.key < $1.key }) {

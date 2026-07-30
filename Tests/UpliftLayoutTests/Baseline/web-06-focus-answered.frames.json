@@ -5,6 +5,10 @@
     "screen": 2,
     "sel": "focus:sleep,first_name:Alex"
   },
+  "viewport": {
+    "width": 390,
+    "height": 719
+  },
   "frames": [
     {
       "path": "",

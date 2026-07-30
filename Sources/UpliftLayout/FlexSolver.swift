@@ -37,7 +37,18 @@ public struct FlexSolver: Sendable {
         case .fill: h = viewport.size.height
         case .percent: throw LayoutUnsupported.percentSize(path: root.path)
         case .hug:
-            h = try intrinsicSize(root, available: Size2D(width: w, height: viewport.size.height)).height
+            // CAPPED at the viewport. The screen body is the root's container,
+            // so a document taller than the screen does not make the root
+            // taller — it makes the root scroll. The paywall is 967pt of
+            // content in a 743pt body and the browser reports the root at 743;
+            // a root that hugged to 967 put the pinned footer 225pt below the
+            // screen it is pinned to.
+            h = min(
+                try intrinsicSize(
+                    root, available: Size2D(width: w, height: viewport.size.height)
+                ).height,
+                viewport.size.height
+            )
         }
         try place(root, into: Rect(x: 0, y: 0, width: lu(w), height: lu(h)), viewport: viewport, out: &out)
         return out

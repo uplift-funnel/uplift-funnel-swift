@@ -5,6 +5,10 @@
     "screen": 1,
     "sel": "first_name:"
   },
+  "viewport": {
+    "width": 390,
+    "height": 719
+  },
   "frames": [
     {
       "path": "",

@@ -4,6 +4,10 @@
     "fixture": "slice",
     "screen": 0
   },
+  "viewport": {
+    "width": 390,
+    "height": 743
+  },
   "frames": [
     {
       "path": "",
