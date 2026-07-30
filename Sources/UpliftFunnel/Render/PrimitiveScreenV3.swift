@@ -20,6 +20,9 @@ struct PrimitiveScreenV3: View {
     let products: [String: [String: String]]
     let size: CGSize
     let safeTop: Double
+    /// Identity of the document, for the model cache — the flow itself is
+    /// `[String: Any]` and cannot be hashed.
+    let flowVersion: String
 
     /// The answers so far. Owned by the host, because navigating away and back
     /// must not lose them.
@@ -30,51 +33,66 @@ struct PrimitiveScreenV3: View {
     /// Which field the keyboard is in, so only one overlay is focusable.
     @FocusState private var focused: String?
 
+    /// Survives body evaluations; see `ScreenModelCache`.
+    @State private var cache = ScreenModelCache()
+
     private var input: LayoutInput {
         LayoutInput(selections: answers, variables: answers, products: products)
     }
 
-    private var interactions: InteractionMap {
-        LayoutDecoder.interactions(flow: flow, screenIndex: screenIndex, locale: locale, input: input)
-    }
-
     /// The screen, rebuilt whenever an answer changes.
     ///
-    /// Rebuilding the WHOLE list rather than patching it is deliberate: a
+    /// Rebuilding the WHOLE thing rather than patching it is deliberate: a
     /// selection changes a state, a state changes a delta, a delta can change a
     /// size, and a size moves every sibling below it. There is no such thing as
     /// a local update in a layout engine, and pretending otherwise is how
     /// renderers grow bugs that only appear on the third tap.
-    private var list: DisplayList? {
-        try? ScreenRenderer(images: images).displayList(
-            flow: flow, screenIndex: screenIndex, locale: locale, input: input,
-            viewport: Viewport(
-                size: Size2D(width: size.width, height: size.height), safeTop: safeTop
+    ///
+    /// So it is built once and reused until something it depends on moves,
+    /// rather than being cheap enough to repeat.
+    private var model: ScreenModel? {
+        cache.model(for: ScreenModelKey(
+            flowVersion: flowVersion,
+            screenIndex: screenIndex,
+            locale: locale,
+            answers: answers,
+            products: products,
+            width: size.width,
+            height: size.height,
+            safeTop: safeTop
+        )) {
+            let input = input
+            guard let list = try? ScreenRenderer().displayList(
+                flow: flow, screenIndex: screenIndex, locale: locale, input: input,
+                viewport: Viewport(
+                    size: Size2D(width: size.width, height: size.height), safeTop: safeTop
+                )
+            ) else { return nil }
+            let interactions = LayoutDecoder.interactions(
+                flow: flow, screenIndex: screenIndex, locale: locale, input: input
             )
-        )
-    }
-
-    /// Every input node's frame, for the overlays.
-    private func fields(_ list: DisplayList) -> [(target: TapTarget, item: PaintItem)] {
-        interactions.targets.values.compactMap { target in
-            guard target.input != nil, let item = list.item(at: target.path) else { return nil }
-            return (target, item)
+            let fields = interactions.targets.values
+                .compactMap { target -> (target: TapTarget, item: PaintItem)? in
+                    guard target.input != nil, let item = list.item(at: target.path) else {
+                        return nil
+                    }
+                    return (target, item)
+                }
+                .sorted { $0.item.path < $1.item.path }
+            return ScreenModel(list: list, interactions: interactions, fields: fields)
         }
-        // Sorted so the view identity is stable across rebuilds — an unordered
-        // dictionary would reshuffle the overlays and drop the keyboard.
-        .sorted { $0.item.path < $1.item.path }
     }
 
     var body: some View {
-        if let list {
+        if let model {
             ZStack(alignment: .topLeading) {
                 PrimitiveCanvas(
                     // The fields' own text is drawn by the overlay below.
-                    list: list.withoutContent(at: Set(fields(list).map(\.item.path))),
+                    list: model.list.withoutContent(at: Set(model.fields.map(\.item.path))),
                     painter: FramePainter(images: images),
-                    onTap: { path in tap(path, in: list) }
+                    onTap: { path in tap(path, with: model) }
                 )
-                ForEach(fields(list), id: \.item.path) { field in
+                ForEach(model.fields, id: \.item.path) { field in
                     overlay(for: field.target, item: field.item)
                 }
             }
@@ -88,7 +106,11 @@ struct PrimitiveScreenV3: View {
 
     // MARK: - touch
 
-    private func tap(_ path: String, in list: DisplayList) {
+    private func tap(_ path: String, with model: ScreenModel) {
+        // The map is read from the model rather than recomputed. It used to be
+        // a computed property touched three times here — handler, answers,
+        // auto-advance — which was three full document walks per tap.
+        let interactions = model.interactions
         guard let target = interactions.handler(for: path) else { return }
 
         if let input = target.input {

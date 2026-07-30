@@ -54,6 +54,10 @@ struct PrimitiveScreenHost: View {
                         height: geo.size.height - TopBarChrome.height - geo.safeAreaInsets.top
                     ),
                     safeTop: geo.safeAreaInsets.top,
+                    // Identity, not content: the flow dictionary cannot be
+                    // hashed, and its id plus version moves exactly when the
+                    // document does.
+                    flowVersion: "\(session.flow.id)@\(primFlow.raw["version"].stringifiedValue ?? "0")",
                     answers: answers,
                     images: images,
                     onAction: dispatch
@@ -200,13 +204,37 @@ struct PrimitiveScreenHost: View {
         }
         walk(root)
 
-        for url in urls where images[url] == nil {
-            guard let link = URL(string: url),
-                  let (data, _) = try? await URLSession.shared.data(from: link),
-                  let source = CGImageSourceCreateWithData(data as CFData, nil),
-                  let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { continue }
-            images[url] = image
+        // Fetched CONCURRENTLY and applied in ONE assignment.
+        //
+        // Both halves matter. Assigning per image meant N writes to `@State`,
+        // and every write re-ran the view — so a screen with four photos laid
+        // itself out four extra times, after it was already on screen and
+        // already correct. That was the visible stutter on first appearance.
+        // Serial fetches then made it N round-trips deep as well.
+        //
+        // The model cache is what makes the single assignment nearly free:
+        // images are not part of its key, so this repaints without re-solving.
+        let wanted = urls.filter { images[$0] == nil }
+        guard !wanted.isEmpty else { return }
+        let fetched = await withTaskGroup(of: (String, CGImage?).self) { group in
+            for url in wanted {
+                group.addTask {
+                    guard let link = URL(string: url),
+                          let (data, _) = try? await URLSession.shared.data(from: link),
+                          let source = CGImageSourceCreateWithData(data as CFData, nil),
+                          let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+                    else { return (url, nil) }
+                    return (url, image)
+                }
+            }
+            var out: [String: CGImage] = [:]
+            for await (url, image) in group {
+                if let image { out[url] = image }
+            }
+            return out
         }
+        guard !fetched.isEmpty else { return }
+        images.merge(fetched) { _, new in new }
     }
 
     /// Device locale if the flow declares it, else the flow's default.
