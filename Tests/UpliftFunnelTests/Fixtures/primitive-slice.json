@@ -64,7 +64,6 @@
       "id": "welcome",
       "archetype": "welcome",
       "top_bar": {
-        "progress": "dots"
       },
       "root": {
         "type": "stack",
@@ -143,7 +142,6 @@
       "id": "goal",
       "archetype": "single_choice",
       "top_bar": {
-        "progress": "dots",
         "close": true
       },
       "root": {

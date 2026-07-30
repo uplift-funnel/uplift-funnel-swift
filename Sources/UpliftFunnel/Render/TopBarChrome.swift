@@ -9,12 +9,17 @@ import UpliftLayout
 /// and a fixed height, and because a back chevron wants a real hit target and
 /// a real pressed state rather than a painted one.
 ///
-/// `top_bar.progress` is NOT ported. Every screen in the corpus sets it to
-/// `"none"` and expresses progress in the TREE instead — `behavior.step` on a
-/// row of segments, which the solver lays out and the painter draws like
-/// anything else. A second progress implementation up here would be a second
-/// thing to keep in step with the first, so it waits for a document that
-/// actually asks for it.
+/// There is no progress indicator here, and there is no `top_bar.progress` any
+/// more either. It could not be laid out: the body's box has to be derived
+/// before anything is on screen, and an indicator row's height depends on the
+/// indicator — one style being literally "1 / 5", whose height is a text
+/// measurement. So the web preview returned no height for such a bar and fell
+/// back to CSS layout, meaning a decorative property decided which LAYOUT
+/// ENGINE ran, and the preview stopped matching this one.
+///
+/// Progress is expressed in the TREE instead — `behavior.step` on a row of
+/// boxes, which the solver lays out and the painter draws like anything else,
+/// so all three platforms agree about it for free.
 struct TopBarChrome: View {
     let topBar: [String: Any]?
     let palette: [String: String]

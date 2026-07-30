@@ -149,7 +149,6 @@
       "id": "carousel",
       "archetype": "multi_choice",
       "top_bar": {
-        "progress": "dots"
       },
       "root": {
         "type": "stack",
@@ -311,7 +310,6 @@
       "id": "inputs",
       "archetype": "text_input",
       "top_bar": {
-        "progress": "dots",
         "close": true
       },
       "root": {
@@ -443,7 +441,6 @@
       "id": "grid",
       "archetype": "custom",
       "top_bar": {
-        "progress": "dots"
       },
       "root": {
         "type": "stack",
@@ -657,7 +654,6 @@
       "id": "media",
       "archetype": "value_intro",
       "top_bar": {
-        "progress": "dots"
       },
       "root": {
         "type": "stack",
@@ -749,7 +745,6 @@
       "id": "swipe",
       "archetype": "swipe_cards",
       "top_bar": {
-        "progress": "dots"
       },
       "root": {
         "type": "stack",
@@ -872,7 +867,6 @@
       "id": "plan",
       "archetype": "plan_picker",
       "top_bar": {
-        "progress": "dots"
       },
       "root": {
         "type": "stack",
