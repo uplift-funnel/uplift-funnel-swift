@@ -121,7 +121,7 @@
     {
       "path": "1.2.0",
       "text": "1672 people have joined this plan today!",
-      "maxContent": 280.296875,
+      "maxContent": 280.21875,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 15,
       "fontWeight": "500",
@@ -141,33 +141,33 @@
       "letterSpacing": "normal",
       "lineHeight": "27.55px",
       "lines": [
-        65.94140625
+        66.30078125
       ]
     },
     {
       "path": "1.3.0.1.1",
       "text": "First week €5.99",
-      "maxContent": 112.75,
+      "maxContent": 113.5625,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 15,
       "fontWeight": "400",
       "letterSpacing": "normal",
       "lineHeight": "21.75px",
       "lines": [
-        112.517578125
+        113.9453125
       ]
     },
     {
       "path": "1.3.0.2",
       "text": "€8.99",
-      "maxContent": 61.296875,
+      "maxContent": 63.03125,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 22,
       "fontWeight": "700",
       "letterSpacing": "normal",
       "lineHeight": "31.9px",
       "lines": [
-        61.431640625
+        62.810546875
       ]
     },
     {
@@ -180,7 +180,7 @@
       "letterSpacing": "normal",
       "lineHeight": "31.9px",
       "lines": [
-        66.568359375
+        66.189453125
       ]
     },
     {
@@ -193,7 +193,7 @@
       "letterSpacing": "normal",
       "lineHeight": "27.55px",
       "lines": [
-        73.67578125
+        74.1640625
       ]
     },
     {
@@ -206,20 +206,20 @@
       "letterSpacing": "normal",
       "lineHeight": "21.75px",
       "lines": [
-        96.3828125
+        97.0205078125
       ]
     },
     {
       "path": "1.3.1.2",
       "text": "€22.99",
-      "maxContent": 74.078125,
+      "maxContent": 75.828125,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 22,
       "fontWeight": "700",
       "letterSpacing": "normal",
       "lineHeight": "31.9px",
       "lines": [
-        74.2998046875
+        75.681640625
       ]
     },
     {
@@ -232,7 +232,7 @@
       "letterSpacing": "normal",
       "lineHeight": "31.9px",
       "lines": [
-        77.7001953125
+        77.318359375
       ]
     },
     {

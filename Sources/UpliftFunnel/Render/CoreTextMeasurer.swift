@@ -70,49 +70,71 @@ public struct CoreTextMeasurer: TextMeasuring {
         return ([plain] + (existing ?? [])) as CFArray
     }
 
-    private func attributes(_ run: TextRunSpec) -> [NSAttributedString.Key: Any] {
-        var attrs: [NSAttributedString.Key: Any] = [
-            .font: Self.font(size: run.fontSize, weight: run.fontWeight),
-        ]
-        if run.letterSpacing != 0 {
-            attrs[.kern] = run.letterSpacing
-        }
-        // A fixed line box, matching CSS. The browser resolves `line-height`
-        // into a number of points and every line gets exactly that, so min and
-        // max are set to the same value and the font's own leading is ignored.
-        // The value is quantised because Chromium quantises per line and then
-        // sums — over ten lines the difference is an eighth of a point.
-        if let multiplier = run.lineHeight {
-            // CoreText's own paragraph style, not `NSMutableParagraphStyle`:
-            // that lives in UIKit on iOS and AppKit on macOS, and this package
-            // builds for both plus a plain `swift test` process.
-            var h = CGFloat(lu(run.fontSize * multiplier))
-            let settings = withUnsafeBytes(of: &h) { raw -> [CTParagraphStyleSetting] in
-                let p = raw.baseAddress!
-                return [
-                    CTParagraphStyleSetting(
-                        spec: .minimumLineHeight,
-                        valueSize: MemoryLayout<CGFloat>.size,
-                        value: p
-                    ),
-                    CTParagraphStyleSetting(
-                        spec: .maximumLineHeight,
-                        valueSize: MemoryLayout<CGFloat>.size,
-                        value: p
-                    ),
-                ]
+    /// The run as one attributed string, spans and all.
+    ///
+    /// CoreText shapes mixed attributes natively, so the typesetter breaks
+    /// ACROSS spans without any inline-layout code here: "€8.99 / week" is one
+    /// paragraph whose first five characters are 22pt bold, and a break can land
+    /// anywhere in it. Building a string per span and adding the widths would
+    /// get the same answer only while the run fits on one line.
+    private func attributed(_ run: TextRunSpec) -> NSAttributedString {
+        let paragraph = paragraphStyle(run)
+        let out = NSMutableAttributedString()
+        for span in run.resolvedSpans {
+            var attrs: [NSAttributedString.Key: Any] = [
+                .font: Self.font(size: span.fontSize, weight: span.fontWeight),
+            ]
+            if span.letterSpacing != 0 { attrs[.kern] = span.letterSpacing }
+            if let paragraph {
+                attrs[kCTParagraphStyleAttributeName as NSAttributedString.Key] = paragraph
             }
-            attrs[kCTParagraphStyleAttributeName as NSAttributedString.Key] =
-                CTParagraphStyleCreate(settings, settings.count)
+            out.append(NSAttributedString(string: span.text, attributes: attrs))
         }
-        return attrs
+        return out
+    }
+
+    /// A fixed line box, matching CSS.
+    ///
+    /// The browser resolves `line-height` into a number of points and every line
+    /// gets exactly that, so min and max are set to the same value and the
+    /// font's own leading is ignored. The value is quantised because Chromium
+    /// quantises per line and then sums — over ten lines the difference is an
+    /// eighth of a point.
+    ///
+    /// The height comes from `lineBox`, which is the TALLEST inline box on the
+    /// line rather than the node's own: a price node struts at the 16pt body
+    /// ramp and is out-voted by its 22pt spans, giving 31.9 where the node alone
+    /// would say 23.2.
+    private func paragraphStyle(_ run: TextRunSpec) -> CTParagraphStyle? {
+        guard run.lineHeight != nil || run.spans?.contains(where: { $0.lineHeight != nil }) == true
+        else { return nil }
+        // CoreText's own paragraph style, not `NSMutableParagraphStyle`: that
+        // lives in UIKit on iOS and AppKit on macOS, and this package builds for
+        // both plus a plain `swift test` process.
+        var h = CGFloat(run.lineBox)
+        let settings = withUnsafeBytes(of: &h) { raw -> [CTParagraphStyleSetting] in
+            let p = raw.baseAddress!
+            return [
+                CTParagraphStyleSetting(
+                    spec: .minimumLineHeight,
+                    valueSize: MemoryLayout<CGFloat>.size,
+                    value: p
+                ),
+                CTParagraphStyleSetting(
+                    spec: .maximumLineHeight,
+                    valueSize: MemoryLayout<CGFloat>.size,
+                    value: p
+                ),
+            ]
+        }
+        return CTParagraphStyleCreate(settings, settings.count)
     }
 
     // MARK: - measuring
 
     public func measure(_ run: TextRunSpec) -> TextMetrics {
         guard !run.text.isEmpty else { return TextMetrics(lines: [], width: 0, height: 0) }
-        let attributed = NSAttributedString(string: run.text, attributes: attributes(run))
+        let attributed = self.attributed(run)
         let typesetter = CTTypesetterCreateWithAttributedString(attributed)
         let length = attributed.length
         let limit = run.maxWidth.map { max(0, $0) } ?? .greatestFiniteMagnitude
@@ -137,7 +159,9 @@ public struct CoreTextMeasurer: TextMeasuring {
             start += count
         }
 
-        let perLine = run.lineHeight.map { lu(run.fontSize * $0) } ?? lineHeight(of: attributed)
+        let perLine = run.lineHeight == nil && run.spans == nil
+            ? lineHeight(of: attributed)
+            : run.lineBox
         return TextMetrics(
             lines: lines,
             width: lines.map(\.width).max() ?? 0,
@@ -150,21 +174,30 @@ public struct CoreTextMeasurer: TextMeasuring {
     public func minContentWidth(_ run: TextRunSpec) -> Double {
         // The longest single word: a box cannot be squeezed narrower than this
         // without overflowing, which is the floor a row's shrink respects.
-        let words = run.text.split(whereSeparator: { $0 == " " || $0 == "\n" })
-        guard !words.isEmpty else { return 0 }
-        return words.map { word -> Double in
-            var single = run
-            single.text = String(word)
-            single.maxWidth = nil
-            return maxContentWidth(single)
+        //
+        // Words are taken WITHIN a span, not across the joined string. A word
+        // straddling a span boundary would be measured in two fonts, and CSS
+        // has no such word anyway — an inline box boundary is not a break
+        // opportunity, but neither is it a place a word's glyphs change size
+        // mid-syllable in any document worth laying out.
+        run.resolvedSpans.flatMap { span in
+            span.text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map { word in
+                var single = run
+                single.spans = nil
+                single.text = String(word)
+                single.fontSize = span.fontSize
+                single.fontWeight = span.fontWeight
+                single.letterSpacing = span.letterSpacing
+                single.maxWidth = nil
+                return maxContentWidth(single)
+            }
         }.max() ?? 0
     }
 
     /// The width of the whole run laid on one line, trailing space excluded.
     public func maxContentWidth(_ run: TextRunSpec) -> Double {
         guard !run.text.isEmpty else { return 0 }
-        let attributed = NSAttributedString(string: run.text, attributes: attributes(run))
-        return width(of: CTLineCreateWithAttributedString(attributed))
+        return width(of: CTLineCreateWithAttributedString(attributed(run)))
     }
 
     // MARK: - the two corrections

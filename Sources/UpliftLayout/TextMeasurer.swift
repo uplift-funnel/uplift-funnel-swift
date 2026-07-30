@@ -14,8 +14,47 @@
 /// against CoreText, where a new mismatch is the shaper's. The failure names its
 /// own cause.
 
+/// One stretch of a run with its own typography.
+///
+/// A price reads "€8.99" large beside "/ week" small, an old price is struck
+/// through inline, a headline changes colour mid-sentence. These are INLINE
+/// boxes on one line box — not a row of text nodes, which is what v2 needed and
+/// which broke the moment the line wrapped.
+public struct TextSegment: Equatable, Sendable {
+    public var text: String
+    public var fontSize: Double
+    public var fontWeight: Int
+    public var letterSpacing: Double
+    /// Multiplier over THIS segment's size. A span that does not name one
+    /// inherits the node's, and the node's is unitless — so a 22pt span under a
+    /// 1.45 node gets a 31.9pt line box, not the node's 23.2.
+    public var lineHeight: Double?
+
+    public init(
+        text: String,
+        fontSize: Double,
+        fontWeight: Int = 400,
+        letterSpacing: Double = 0,
+        lineHeight: Double? = nil
+    ) {
+        self.text = text
+        self.fontSize = fontSize
+        self.fontWeight = fontWeight
+        self.letterSpacing = letterSpacing
+        self.lineHeight = lineHeight
+    }
+}
+
 public struct TextRunSpec: Equatable, Sendable {
     public var text: String
+    /// The run split into differently-styled stretches, or nil when it is
+    /// uniform. `text` stays the joined string either way, so a measurer that
+    /// does not care can ignore this entirely.
+    ///
+    /// The node's own typography is still the STRUT — it sets the floor for the
+    /// line box even when every span is smaller, which is why it is kept
+    /// alongside rather than replaced by the segments.
+    public var spans: [TextSegment]?
     /// Points, already resolved through the type ramp.
     public var fontSize: Double
     /// CSS numeric weight, 100–900. Not a `UIFont.Weight`: SF's named instances
@@ -34,7 +73,8 @@ public struct TextRunSpec: Equatable, Sendable {
         fontWeight: Int = 400,
         letterSpacing: Double = 0,
         lineHeight: Double? = nil,
-        maxWidth: Double? = nil
+        maxWidth: Double? = nil,
+        spans: [TextSegment]? = nil
     ) {
         self.text = text
         self.fontSize = fontSize
@@ -42,6 +82,34 @@ public struct TextRunSpec: Equatable, Sendable {
         self.letterSpacing = letterSpacing
         self.lineHeight = lineHeight
         self.maxWidth = maxWidth
+        self.spans = spans
+    }
+
+    /// The run as segments, uniform runs included — one segment carrying the
+    /// node's own typography. Lets a measurer have a single code path.
+    public var resolvedSpans: [TextSegment] {
+        spans ?? [TextSegment(
+            text: text,
+            fontSize: fontSize,
+            fontWeight: fontWeight,
+            letterSpacing: letterSpacing,
+            lineHeight: lineHeight
+        )]
+    }
+
+    /// The line box this run occupies, in points.
+    ///
+    /// CSS takes the tallest inline box on the line, and the block's own font is
+    /// one of the candidates — the strut — even when no text uses it. A price
+    /// node with no typography of its own still struts at the body ramp; its
+    /// 22pt spans simply out-vote it.
+    public var lineBox: Double {
+        let strut = lineHeight.map { lu(fontSize * $0) } ?? 0
+        return resolvedSpans.reduce(strut) { tallest, span in
+            let multiplier = span.lineHeight ?? lineHeight
+            guard let multiplier else { return tallest }
+            return max(tallest, lu(span.fontSize * multiplier))
+        }
     }
 }
 

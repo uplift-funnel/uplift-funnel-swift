@@ -252,13 +252,57 @@ public enum Decoder {
         let t = style?["text"] as? [String: Any]
         let role = t?["role"] as? String ?? "body"
         let ramp = TYPE_RAMP[role] ?? TYPE_RAMP["body"]!
+        let size = dbl(t?["size"]) ?? ramp.size
+        let weight = WEIGHTS[t?["weight"] as? String ?? ramp.weight] ?? 400
+        let tracking = dbl(t?["letterSpacing"]) ?? 0
+        let multiplier = dbl(t?["lineHeight"]) ?? ramp.lineHeight
+
         return TextRunSpec(
             text: text,
-            fontSize: dbl(t?["size"]) ?? ramp.size,
-            fontWeight: WEIGHTS[t?["weight"] as? String ?? ramp.weight] ?? 400,
-            letterSpacing: dbl(t?["letterSpacing"]) ?? 0,
-            lineHeight: dbl(t?["lineHeight"]) ?? ramp.lineHeight
+            fontSize: size,
+            fontWeight: weight,
+            letterSpacing: tracking,
+            lineHeight: multiplier,
+            spans: spans(
+                props,
+                input: input,
+                size: size, weight: weight, tracking: tracking, role: role
+            )
         )
+    }
+
+    /// `props.spans` as inline segments, each inheriting what it does not name.
+    ///
+    /// The renderer is explicit about the inheritance — it builds each span's
+    /// CSS from the span's own style and then DELETES `fontSize`, `lineHeight`
+    /// and `fontWeight` again unless the span set them, so an unstyled span is
+    /// indistinguishable from the node's own text. Anything else here would
+    /// silently restyle every span that only meant to change colour.
+    private static func spans(
+        _ props: [String: Any]?,
+        input: LayoutInput,
+        size: Double,
+        weight: Int,
+        tracking: Double,
+        role: String
+    ) -> [TextSegment]? {
+        guard let raw = props?["spans"] as? [[String: Any]], !raw.isEmpty else { return nil }
+        let ramp = TYPE_RAMP[role] ?? TYPE_RAMP["body"]!
+        return raw.map { span in
+            let s = span["style"] as? [String: Any]
+            return TextSegment(
+                text: interpolate(localized(span["text"], input), input: input),
+                fontSize: dbl(s?["size"]) ?? size,
+                // A span naming a weight resolves it; one that does not keeps
+                // the node's. The renderer falls back to the RAMP's weight for a
+                // span whose style exists but names no weight, which is the same
+                // value whenever the node did not override it either.
+                fontWeight: (s?["weight"] as? String).flatMap { WEIGHTS[$0] }
+                    ?? (s == nil ? weight : (WEIGHTS[ramp.weight] ?? weight)),
+                letterSpacing: dbl(s?["letterSpacing"]) ?? tracking,
+                lineHeight: dbl(s?["lineHeight"])
+            )
+        }
     }
 
     /// A text node's value, or its spans joined — the shaper sees one run

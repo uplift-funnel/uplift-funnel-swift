@@ -257,20 +257,31 @@ final class LayoutParityTests: XCTestCase {
     ///
     /// The stub could not see any of it. It replays fixed line counts per
     /// string, so its text cannot re-wrap however wrong the width is — which is
-    /// exactly why both measurers are kept.
+    /// exactly why both measurers are kept. It is now the LESS accurate of the
+    /// two on the paywall, because its joined-span entry is built from ink
+    /// rects where the browser sizes from advances.
+    ///
+    /// The paywall then closed on two more, and the second is the interesting
+    /// one. Spans became real inline segments rather than one joined string in
+    /// the node's own typography — a price is 22pt bold beside 22pt regular
+    /// under a node with no typography at all. That left 1.73pt on the €, which
+    /// looked like a font difference and was not: the dashboard's body carries
+    /// Geist's `font-feature-settings: "cv11", "ss01"`, feature settings are
+    /// inherited, and the phone frame never reset them — so the BROWSER was
+    /// applying Geist's stylistic sets to the system font and the preview
+    /// disagreed with the device. CoreText was right; the baseline was wrong.
     func testFrameParityWithCoreTextShaping() throws {
         // What each shot's REMAINING failures are, so the floors below mean
         // something. Raise them as these close; never lower one.
-        //   web-01/02  the root hugs where the viewport should bound it; spans
-        //              laid out as one joined run instead of separate inline
-        //              boxes, which resizes the price row
+        //   web-01/02  the root hugs where the viewport should bound it, and a
+        //              14pt radio dot the decoder sizes from the wrong property
         //   web-04/07  the pinned footer's safe-area bookkeeping, 24pt
         //   web-05/06  emoji, ±1pt and irreducible — Apple Color Emoji is a
         //              bitmap face whose advance is already a whole number, so
         //              there is no finer value to round the browser's way
         let floor: [String: Int] = [
-            "web-01-paywall-default": 23,   // of 39
-            "web-02-paywall-monthly": 23,   // of 39
+            "web-01-paywall-default": 31,   // of 39
+            "web-02-paywall-monthly": 31,   // of 39
             "web-03-welcome": 8,            // of 8 — exact
             "web-04-name-input": 7,         // of 9
             "web-05-focus-unanswered": 8,   // of 20

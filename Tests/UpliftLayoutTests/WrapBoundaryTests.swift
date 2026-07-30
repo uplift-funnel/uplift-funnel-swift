@@ -30,6 +30,8 @@ final class WrapBoundaryTests: XCTestCase {
         let chromiumLines: Int
         /// Chromium's own width for each line it broke the run onto.
         let chromiumWidths: [Double]
+        /// The run on one unbroken line, which is what sizes a hugging element.
+        let maxContent: Double
         /// The element's own width, from the frames baseline — the real box.
         let box: Double
     }
@@ -76,6 +78,7 @@ final class WrapBoundaryTests: XCTestCase {
                     lineHeight: px.map { $0 / size },
                     chromiumLines: lines.count,
                     chromiumWidths: lines.map(\.doubleValue),
+                    maxContent: (r["maxContent"] as? NSNumber)?.doubleValue ?? 0,
                     box: box
                 ))
             }
@@ -166,11 +169,13 @@ final class WrapBoundaryTests: XCTestCase {
         var emoji: [(Double, String)] = []
         var plain: [(Double, String)] = []
         for r in try runs() where r.chromiumLines == 1 {
-            // Against CHROMIUM'S OWN width for the run, not against the box:
-            // a text element set to fill is far wider than its text, and
-            // comparing to the box would call that a 255pt error.
+            // Against Chromium's MAX-CONTENT, not its line rect: a line rect
+            // ends at the last glyph's ink where max-content carries its full
+            // advance, and the gap is real — 0.43pt on the paywall's ✕. Not
+            // against the box either, since a text element set to fill is far
+            // wider than its text.
             let got = measurer.maxContentWidth(spec(r, maxWidth: nil))
-            let delta = abs(got - (r.chromiumWidths.first ?? 0))
+            let delta = abs(got - r.maxContent)
             let label = "\(r.text.prefix(24)) @\(r.size)/\(r.weight)"
             if r.text.unicodeScalars.contains(where: { $0.properties.isEmoji && $0.value > 0x238C }) {
                 emoji.append((delta, label))
@@ -186,18 +191,18 @@ final class WrapBoundaryTests: XCTestCase {
             plainWorst?.0 ?? 0, plainWorst?.1 ?? "—", plain.count
         ))
 
-        // Both bounds are font-table facts with names, not slack to spend.
-        // Emoji: Apple Color Emoji quantises its advance to a whole number, so
-        // where Chromium reads `size/2 + 12` this reads `size/2 + 13` and there
-        // is no finer value in between. Text: the € resolves to a different
-        // face than Chromium picks, at 1.596pt on the 22pt price.
+        // Emoji are the only outlier left, and it is a font-table fact rather
+        // than slack to spend: Apple Color Emoji quantises its advance to a
+        // whole number, so where Chromium reads `size/2 + 12` this reads
+        // `size/2 + 13` and there is no finer value in between. Every non-emoji
+        // run is inside a third of a point.
         XCTAssertLessThanOrEqual(
             emojiWorst?.0 ?? 0, 1.0,
             "an emoji drifted past the quantisation bound: \(emojiWorst?.1 ?? "")"
         )
         XCTAssertLessThan(
-            plainWorst?.0 ?? 0, 1.7,
-            "a non-emoji run drifted past the € case: \(plainWorst?.1 ?? "")"
+            plainWorst?.0 ?? 0, 0.3,
+            "a non-emoji run drifted: \(plainWorst?.1 ?? "")"
         )
     }
 }

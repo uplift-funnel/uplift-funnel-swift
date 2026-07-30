@@ -107,19 +107,19 @@ final class CoreTextMeasurerTests: XCTestCase {
         let median = sorted[sorted.count / 2].0
         XCTAssertLessThan(median, 0.05, "half the runs should be within a twentieth of a point")
 
-        // The worst is looser, and the reason is specific rather than a shrug:
-        // every run above half a point contains a EURO SIGN. macOS resolves €
-        // to a different face than Chromium does, and its advance differs by
-        // ~1.7pt at 22pt — a font-fallback difference, not a shaping one, and
-        // nothing in the measurer can close it. If a NON-currency run ever
-        // lands here, that is a real regression and this number should not be
-        // raised to hide it.
-        let worstNonCurrency = sorted.first { !$0.1.contains("€") }
-        XCTAssertLessThan(
-            worstNonCurrency?.0 ?? 0, 0.5,
-            "a run with no currency glyph drifted: \(worstNonCurrency?.1 ?? "")"
-        )
-        XCTAssertLessThan(worst, 2.0, "CoreText drifted from Chromium by \(worst)pt on \(worstRun)")
+        // The WORST is a quarter point, and it is the long headings — 30 and
+        // 40pt strings of thirty-odd characters, where a hundredth of a point
+        // per glyph adds up. It is not a glyph the two platforms disagree about.
+        //
+        // It used to be the € at 1.73pt, and the explanation on this line used
+        // to be that macOS resolved it to a different face. That was wrong. The
+        // dashboard's body carries Geist's `font-feature-settings: "cv11",
+        // "ss01"`, those are INHERITED, and the phone frame never reset them —
+        // so the browser was applying Geist's stylistic sets to the system font
+        // and the PREVIEW was the one that disagreed with the device. CoreText
+        // had it right the whole time. Worth remembering the next time a single
+        // glyph is the outlier: check what the browser was actually asked.
+        XCTAssertLessThan(worst, 0.3, "CoreText drifted from Chromium by \(worst)pt on \(worstRun)")
     }
 
     // MARK: - wrapping
