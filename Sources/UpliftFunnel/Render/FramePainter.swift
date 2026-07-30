@@ -430,6 +430,16 @@ public struct FramePainter {
         let lineBox = run.lineBox > 0 ? run.lineBox : (metrics.height / max(1, Double(metrics.lines.count)))
         let lines = maxLines.map { Array(metrics.lines.prefix($0)) } ?? metrics.lines
 
+        // The run's own font, not the line's: every line of a run shares the
+        // node's typography, so the ascent and descent that place the baseline
+        // are constant down the paragraph. It used to be rebuilt per line.
+        let font = CoreTextMeasurer.font(size: run.fontSize, weight: run.fontWeight)
+        let ascent = Double(CTFontGetAscent(font)), descent = Double(CTFontGetDescent(font))
+        // The baseline sits inside the line box, not on it. CSS centres the
+        // font's own box in the line box — half the leading above, half below —
+        // so the baseline is that plus the ascent.
+        let halfLeading = (lineBox - (ascent + descent)) / 2
+
         for (i, line) in lines.enumerated() {
             let x: Double
             switch align {
@@ -437,12 +447,6 @@ public struct FramePainter {
             case .center: x = rect.x + (rect.width - line.width) / 2
             case .end: x = rect.x + rect.width - line.width
             }
-            // The baseline sits inside the line box, not on it. CSS centres the
-            // font's own box in the line box — half the leading above, half
-            // below — so the baseline is that plus the ascent.
-            let font = CoreTextMeasurer.font(size: run.fontSize, weight: run.fontWeight)
-            let ascent = Double(CTFontGetAscent(font)), descent = Double(CTFontGetDescent(font))
-            let halfLeading = (lineBox - (ascent + descent)) / 2
             let baseline = rect.y + Double(i) * lineBox + halfLeading + ascent
 
             ctx.saveGState()

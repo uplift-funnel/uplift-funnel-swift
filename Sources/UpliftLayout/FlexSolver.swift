@@ -19,6 +19,56 @@ public struct FlexSolver: Sendable {
 
     /// Lay a screen out and return every node's frame, in document order.
     public func solve(root: LayoutNode, viewport: Viewport) throws -> [SolvedFrame] {
+        try LayoutPass(measurer: measurer).solve(root: root, viewport: viewport)
+    }
+}
+
+/// One pass of the algorithm, and the only place it keeps state.
+///
+/// `FlexSolver` stays a `Sendable` struct that is a pure function of its
+/// arguments; the memo lives HERE, on an object created inside `solve` and
+/// discarded when it returns. That is the whole reason this type exists.
+///
+/// A memo on the solver itself would be a correctness bug rather than a
+/// speed-up: `PrimitiveScreenV3` holds one solver and re-solves on every
+/// keystroke, so an instance-lifetime cache keyed by path would hand back the
+/// PREVIOUS answer's frames the moment a selection changed a delta. Per pass,
+/// there is nothing to go stale. It also means two concurrent solves get two
+/// memos and need no lock.
+///
+/// Why the memo is needed at all: `intrinsicSize` is called from seven sites
+/// and recurses into whole subtrees. Measured on the paywall before this, 41
+/// nodes produced 1,376 `intrinsicSize` calls and 1,930 text measurements — a
+/// hundredfold re-measure of the same nineteen strings, because a row measures
+/// its children once for the flex base, again for the cross size, and again
+/// when placing them.
+final class LayoutPass {
+    private let measurer: any TextMeasuring
+
+    /// `(path, offered width, offered height)` → the answer.
+    ///
+    /// Keyed on the BIT PATTERN of the two lengths rather than their value.
+    /// Identical bits guarantee an identical answer, and anything else simply
+    /// misses — the conservative direction, since a miss costs a measurement
+    /// and a false hit would cost a wrong frame. It also makes the parity
+    /// suite's NaN sentinel a stable, self-equal key instead of one that never
+    /// matches and grows a bucket per insert.
+    ///
+    /// Keying on `path` is safe because path uniqueness is already load-bearing
+    /// elsewhere: `DisplayListBuilder` builds a path→rect dictionary,
+    /// `InteractionMap` is path-keyed, and `hitTest` returns one.
+    private struct MemoKey: Hashable {
+        let path: String
+        let width: UInt64
+        let height: UInt64
+    }
+    private var memo: [MemoKey: Size2D] = [:]
+
+    init(measurer: any TextMeasuring) {
+        self.measurer = measurer
+    }
+
+    func solve(root: LayoutNode, viewport: Viewport) throws -> [SolvedFrame] {
         var out: [SolvedFrame] = []
         // The root is sized like any other node, with one CSS fact standing in
         // for the parent it does not have: a block-level box is as WIDE as its
@@ -62,12 +112,29 @@ public struct FlexSolver: Sendable {
     /// size of its content; a `fill` node returns what it was offered. This is
     /// flexbox's first pass.
     func intrinsicSize(_ n: LayoutNode, available: Size2D) throws -> Size2D {
+        let key = MemoKey(
+            path: n.path,
+            width: available.width.bitPattern,
+            height: available.height.bitPattern
+        )
+        if let hit = memo[key] { return hit }
+
         let w = try resolvedWidth(n, available: available)
         let h = try resolvedHeight(n, available: available, width: w)
-        return Size2D(
+        let size = Size2D(
             width: quantised(w, when: n.width),
             height: quantised(h, when: n.height)
         )
+        // SUCCESSES only. A `LayoutUnsupported` is deterministic in the same
+        // arguments, so re-running it costs nothing and re-throws identically,
+        // where caching a failure would mean deciding what a cached error means
+        // for a node asked about twice.
+        //
+        // Quantisation happens above, INSIDE the memoised call, so what goes in
+        // is already on the layout grid. That is what makes this incapable of
+        // changing an answer rather than merely unlikely to.
+        memo[key] = size
+        return size
     }
 
     /// A content-derived size rounds UP to the grid; a declared or inherited one
