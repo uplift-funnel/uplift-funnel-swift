@@ -63,6 +63,15 @@ public struct LayoutNode: Sendable {
     // leaf content, for the intrinsic pass
     public var text: TextRunSpec?
 
+    /// A native control's own height, when the platform decides it rather than
+    /// content does.
+    ///
+    /// An `input` is not measured text: it is one line whatever the placeholder
+    /// says, and its height comes from the control's own padding and line box.
+    /// Measuring the placeholder would make the field grow when the copy got
+    /// longer, which no text field does.
+    public var controlHeight: Double?
+
     public var children: [LayoutNode] = []
 
     public init(path: String, type: String) {

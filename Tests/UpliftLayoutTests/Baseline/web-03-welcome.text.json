@@ -4,6 +4,7 @@
     {
       "path": "0.0.0",
       "text": "🪷",
+      "maxContent": 35.0458984375,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 34,
       "fontWeight": "400",
@@ -16,6 +17,7 @@
     {
       "path": "0.1",
       "text": "Still can't quiet your mind?",
+      "maxContent": 474.5888671875,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 40,
       "fontWeight": "700",
@@ -29,6 +31,7 @@
     {
       "path": "0.2",
       "text": "50,000+ people use this to sleep better, stress less, and finally feel like themselves",
+      "maxContent": 583.173828125,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 15,
       "fontWeight": "400",
@@ -42,6 +45,7 @@
     {
       "path": "1.0",
       "text": "I'm ready",
+      "maxContent": 71.123046875,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 16,
       "fontWeight": "500",

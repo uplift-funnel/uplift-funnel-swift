@@ -112,6 +112,7 @@ public struct FlexSolver: Sendable {
     }
 
     private func hugHeight(_ n: LayoutNode, available: Size2D) throws -> Double {
+        if let h = n.controlHeight { return h }
         if let run = n.text {
             var r = run
             r.maxWidth = available.width - n.padding.horizontal

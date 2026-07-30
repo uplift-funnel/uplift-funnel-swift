@@ -60,18 +60,40 @@ final class LayoutParityTests: XCTestCase {
     private func measurer(for shot: String) throws -> StubMeasurer {
         let doc = try json("\(shot).text")
         var runs: [String: (lines: [Double], size: Double, height: Double)] = [:]
+
+        // Grouped by node, because a text node with SPANS is recorded as one
+        // run per span — `"€8.99"` and `" / week"` arrive separately at the
+        // same path, since each is its own inline box. They sit side by side on
+        // one line, so the node's width is their sum and its height is one
+        // line, not two. Indexing only by the individual span texts would leave
+        // the joined string the decoder produces unmeasurable.
+        var byPath: [String: [(text: String, lines: [Double], perLine: Double)]] = [:]
+
         for case let r as [String: Any] in (doc["runs"] as? [Any] ?? []) {
             guard let text = r["text"] as? String,
-                  let lines = r["lines"] as? [NSNumber] else { continue }
+                  let lines = r["lines"] as? [NSNumber],
+                  let path = r["path"] as? String else { continue }
             let size = (r["fontSize"] as? NSNumber)?.doubleValue ?? 16
             // `lineHeight` arrives as a CSS string: "22.4px" or "normal".
             let lhRaw = (r["lineHeight"] as? String) ?? ""
             let perLine = Double(lhRaw.replacingOccurrences(of: "px", with: "")) ?? size * 1.2
+            let widths = lines.map(\.doubleValue)
             // Quantised PER LINE, then summed — which is what Chromium does,
             // and the difference is visible: a 43.2pt line height over two
             // lines is 86.375 (lu(43.2) × 2), not lu(86.4) = 86.390625. One
             // sixty-fourth, and it moves every sibling below it.
-            runs[text] = (lines.map(\.doubleValue), size, lu(perLine) * Double(lines.count))
+            runs[text] = (widths, size, lu(perLine) * Double(widths.count))
+            byPath[path, default: []].append((text, widths, perLine))
+        }
+
+        for (_, parts) in byPath where parts.count > 1 {
+            // Only when every part is a single line; a wrapped span set would
+            // need real inline layout, and nothing in the corpus has one.
+            guard parts.allSatisfy({ $0.lines.count == 1 }) else { continue }
+            let joined = parts.map(\.text).joined()
+            let width = parts.reduce(0.0) { $0 + ($1.lines.first ?? 0) }
+            let height = lu(parts.map(\.perLine).max() ?? 0)
+            runs[joined] = ([width], parts[0].lines.first ?? 0, height)
         }
         return StubMeasurer(runs: runs)
     }
@@ -88,7 +110,14 @@ final class LayoutParityTests: XCTestCase {
             selections[String(k)] = v
             variables[String(k)] = v
         }
-        return LayoutInput(selections: selections, variables: variables)
+        // The store data the golden route renders with. It is not in the
+        // document — a price comes from StoreKit — so the two sides have to
+        // agree on it explicitly or they are laying out different text.
+        let products = [
+            "ai_interior_weekly": ["price": "€8.99", "period": "week"],
+            "ai_interior_monthly": ["price": "€22.99", "period": "month"],
+        ]
+        return LayoutInput(selections: selections, variables: variables, products: products)
     }
 
     // MARK: - the comparison
@@ -174,10 +203,10 @@ final class LayoutParityTests: XCTestCase {
             "web-01-paywall-default": 25,   // of 39
             "web-02-paywall-monthly": 25,   // of 39
             "web-03-welcome": 7,            // of 8
-            "web-04-name-input": 4,         // of 9
+            "web-04-name-input": 7,         // of 9
             "web-05-focus-unanswered": 19,  // of 20
             "web-06-focus-answered": 22,    // of 23
-            "web-07-name-invalid": 4,       // of 9
+            "web-07-name-invalid": 7,       // of 9
         ]
         var report: [String] = []
         for (shot, want) in floor.sorted(by: { $0.key < $1.key }) {
@@ -185,8 +214,7 @@ final class LayoutParityTests: XCTestCase {
             let total = matched + failures.count
             report.append("  \(shot): \(matched)/\(total)")
             if !failures.isEmpty {
-                for f in failures.prefix(6) { report.append("      \(f)") }
-                if failures.count > 6 { report.append("      … \(failures.count - 6) more") }
+                for f in failures { report.append("      \(f)") }
             }
             XCTAssertGreaterThanOrEqual(
                 matched, want,

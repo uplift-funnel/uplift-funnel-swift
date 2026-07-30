@@ -17,6 +17,15 @@ import Foundation
 public struct LayoutInput: Sendable {
     public var selections: [String: String]
     public var variables: [String: String]
+    /// Store data per product ref, for the `{{product.*}}` tokens.
+    ///
+    /// A product-bound box publishes these into its own subtree, which is what
+    /// lets a plan card be composed rather than configured. The price is not in
+    /// the document — it comes from the store — so laying out without it
+    /// measures the literal `{{product.price}}`, seventeen unbreakable
+    /// characters that size the row completely differently from "€8.99".
+    public var products: [String: [String: String]]
+
     /// key → copy, for the locale being laid out.
     ///
     /// Text is measured, so the SHAPED STRING has to be the one the user sees.
@@ -28,11 +37,13 @@ public struct LayoutInput: Sendable {
     public init(
         selections: [String: String] = [:],
         variables: [String: String] = [:],
-        catalog: [String: String] = [:]
+        catalog: [String: String] = [:],
+        products: [String: [String: String]] = [:]
     ) {
         self.selections = selections
         self.variables = variables
         self.catalog = catalog
+        self.products = products
     }
 }
 
@@ -92,6 +103,15 @@ public enum Decoder {
         if let v = visible as? Bool, v == false { return nil }
         if let cond = visible as? [String: Any], !conditionHolds(cond["when"], input: input) { return nil }
 
+        // A product-bound box scopes `{{product.*}}` for everything beneath it.
+        var input = input
+        if let ref = (behavior?["product"] as? [String: Any])?["ref"] as? String {
+            let info = input.products[ref] ?? [:]
+            for key in ["price", "period", "trial", "original_price", "savings"] {
+                input.variables["product.\(key)"] = info[key] ?? ""
+            }
+        }
+
         var n = LayoutNode(path: path, type: type)
 
         if let s = selfG {
@@ -132,6 +152,17 @@ public enum Decoder {
             n.borderWidth = dbl(stroke["width"]) ?? 1
         }
         n.text = textRun(raw, type: type, style: styleG, input: input)
+
+        // `controlBox` in the web renderer: 12pt of vertical padding around a
+        // single 16pt body line. One line, always — a text field does not grow
+        // with its placeholder.
+        if type == "input" {
+            let kind = (behavior?["input"] as? [String: Any])?["kind"] as? String ?? "text"
+            if kind != "toggle" && kind != "slider" {
+                let body = TYPE_RAMP["body"]!
+                n.controlHeight = 2 * 12 + lu(body.size * body.lineHeight)
+            }
+        }
 
         let passDown = own ?? inheritedState
         var kids: [LayoutNode] = []
