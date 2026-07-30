@@ -26,7 +26,7 @@ public struct ScreenRenderer {
         input: LayoutInput = LayoutInput(),
         viewport: Viewport
     ) throws -> DisplayList {
-        guard let tree = Decoder.layoutTree(
+        guard let tree = LayoutDecoder.layoutTree(
             flow: flow, screenIndex: screenIndex, locale: locale, input: input
         ) else {
             throw RenderFailure.noScreen(index: screenIndex)

@@ -183,14 +183,14 @@ final class DisplayListTests: XCTestCase {
             "type": "box",
             "style": ["stroke": ["color": "#000000", "width": 4, "align": "outside"]],
         ]]]]
-        let tree = try XCTUnwrap(Decoder.layoutTree(flow: flow, screenIndex: 0))
+        let tree = try XCTUnwrap(LayoutDecoder.layoutTree(flow: flow, screenIndex: 0))
         XCTAssertEqual(tree.borderWidth, 0)
 
         let inside: [String: Any] = ["screens": [["root": [
             "type": "box",
             "style": ["stroke": ["color": "#000000", "width": 4]],
         ]]]]
-        let strict = try XCTUnwrap(Decoder.layoutTree(flow: inside, screenIndex: 0))
+        let strict = try XCTUnwrap(LayoutDecoder.layoutTree(flow: inside, screenIndex: 0))
         XCTAssertEqual(strict.borderWidth, 4)
     }
 

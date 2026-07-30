@@ -118,7 +118,7 @@ final class SpanTests: XCTestCase {
         let flow: [String: Any] = [
             "screens": [["root": ["type": "box", "children": [card]]]],
         ]
-        let tree = try XCTUnwrap(Decoder.layoutTree(
+        let tree = try XCTUnwrap(LayoutDecoder.layoutTree(
             flow: flow, screenIndex: 0, locale: nil,
             input: LayoutInput(products: ["weekly": ["price": "€8.99", "period": "week"]])
         ))

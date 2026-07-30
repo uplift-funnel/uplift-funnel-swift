@@ -135,7 +135,7 @@ final class LayoutParityTests: XCTestCase {
         let fixture = try json(fixtureName(params["fixture"] as? String ?? "slice"))
         let index = (params["screen"] as? NSNumber)?.intValue ?? 0
         let tree = try XCTUnwrap(
-            Decoder.layoutTree(
+            LayoutDecoder.layoutTree(
                 flow: fixture,
                 screenIndex: index,
                 locale: params["locale"] as? String,

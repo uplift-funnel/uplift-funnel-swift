@@ -33,7 +33,7 @@ final class InteractionTests: XCTestCase {
     /// tapping the word "Weekly" selects nothing while tapping the millimetre
     /// beside it works — which reads as a flaky tap target, not as a bug.
     func testATapOnALabelBubblesToTheCard() throws {
-        let map = Decoder.interactions(
+        let map = LayoutDecoder.interactions(
             flow: try fixture("wellness-onboarding"), screenIndex: 2
         )
         // The first option card, and the title text buried two levels inside.
@@ -44,7 +44,7 @@ final class InteractionTests: XCTestCase {
 
     /// A tap on nothing interactive stays nothing.
     func testATapOutsideAnyTargetDoesNothing() throws {
-        let map = Decoder.interactions(
+        let map = LayoutDecoder.interactions(
             flow: try fixture("wellness-onboarding"), screenIndex: 2
         )
         XCTAssertNil(map.handler(for: "0"), "the headline should not be tappable")
@@ -112,19 +112,19 @@ final class InteractionTests: XCTestCase {
     // MARK: - decoding
 
     func testTapActionsDecodeAsAListOrAString() throws {
-        let asList = Decoder.interactions(flow: flow([
+        let asList = LayoutDecoder.interactions(flow: flow([
             "type": "box", "behavior": ["tap": ["next"]],
         ]), screenIndex: 0)
         XCTAssertEqual(asList.targets[""]?.actions, ["next"])
 
-        let asString = Decoder.interactions(flow: flow([
+        let asString = LayoutDecoder.interactions(flow: flow([
             "type": "box", "behavior": ["tap": "next"],
         ]), screenIndex: 0)
         XCTAssertEqual(asString.targets[""]?.actions, ["next"])
     }
 
     func testInputDecodesItsFieldAndKeyboard() throws {
-        let map = Decoder.interactions(
+        let map = LayoutDecoder.interactions(
             flow: try fixture("wellness-onboarding"), screenIndex: 1
         )
         let field = try XCTUnwrap(map.targets.values.first { $0.input != nil }?.input)
@@ -137,7 +137,7 @@ final class InteractionTests: XCTestCase {
     /// The map is what the view consults on every tap, so a screen of six
     /// hundred decorative boxes should cost six entries, not six hundred.
     func testOnlyInteractiveNodesAreRecorded() throws {
-        let map = Decoder.interactions(
+        let map = LayoutDecoder.interactions(
             flow: try fixture("interior-paywall"), screenIndex: 0
         )
         XCTAssertFalse(map.targets.isEmpty)
@@ -149,7 +149,7 @@ final class InteractionTests: XCTestCase {
     // MARK: - the corpus's own groups
 
     func testThePaywallsPlanGroupIsFound() throws {
-        let map = Decoder.interactions(
+        let map = LayoutDecoder.interactions(
             flow: try fixture("interior-paywall"), screenIndex: 0
         )
         let group = try XCTUnwrap(map.groups["plan"], "the paywall declares a plan group")

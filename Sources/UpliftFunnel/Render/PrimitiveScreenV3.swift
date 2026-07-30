@@ -35,7 +35,7 @@ struct PrimitiveScreenV3: View {
     }
 
     private var interactions: InteractionMap {
-        Decoder.interactions(flow: flow, screenIndex: screenIndex, locale: locale, input: input)
+        LayoutDecoder.interactions(flow: flow, screenIndex: screenIndex, locale: locale, input: input)
     }
 
     /// The screen, rebuilt whenever an answer changes.

@@ -57,7 +57,17 @@ public struct LayoutInput: Sendable {
     }
 }
 
-public enum Decoder {
+/// Named `LayoutDecoder` rather than `Decoder`, which is what it was until the
+/// Flutter plugin vendored both targets into ONE CocoaPods module and the
+/// shadowing became a compile error: `Decoder` is a Swift standard-library
+/// protocol, and `JSONValue`'s `init(from decoder: Decoder)` resolved to this
+/// enum instead of to it.
+///
+/// SPM hid it, because the two lived in separate modules. It was a hazard the
+/// whole time — a public type shadowing a standard protocol traps anyone
+/// writing `Codable` conformance nearby — and the merge only made it impossible
+/// to ignore.
+public enum LayoutDecoder {
     /// Decode one screen's root into a laid-out-able tree.
     public static func layoutTree(
         screen: [String: Any],

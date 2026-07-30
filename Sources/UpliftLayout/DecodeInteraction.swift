@@ -6,7 +6,7 @@ import Foundation
 /// node removed by a failing condition has no frame, so it can never be hit,
 /// and a map built from the raw tree is therefore no less correct and one pass
 /// simpler. It also means interaction survives a layout that threw.
-extension Decoder {
+extension LayoutDecoder {
     public static func interactions(
         flow: [String: Any], screenIndex: Int, locale: String? = nil,
         input: LayoutInput = LayoutInput()

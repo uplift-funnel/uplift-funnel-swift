@@ -10,7 +10,7 @@ import Foundation
 ///
 /// Every default here is the web renderer's, and where it looks arbitrary it
 /// is quoted from `render/css.ts` rather than chosen.
-extension Decoder {
+extension LayoutDecoder {
     static func paintStyle(_ style: [String: Any]?, tokens: [String: String]) -> PaintStyle {
         guard let style else { return .none }
         var out = PaintStyle()

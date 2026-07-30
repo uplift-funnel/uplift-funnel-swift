@@ -12,7 +12,7 @@ import XCTest
 /// than driven from the corpus.
 final class RampAndTokenTests: XCTestCase {
     private func run(_ node: [String: Any], input: LayoutInput = LayoutInput()) throws -> TextRunSpec {
-        let tree = try XCTUnwrap(Decoder.layoutTree(
+        let tree = try XCTUnwrap(LayoutDecoder.layoutTree(
             flow: ["screens": [["root": node]]], screenIndex: 0, input: input
         ))
         return try XCTUnwrap(tree.text)
