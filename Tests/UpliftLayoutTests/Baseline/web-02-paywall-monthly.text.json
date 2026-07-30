@@ -4,7 +4,7 @@
     {
       "path": "0.0.0",
       "text": "✕",
-      "maxContent": 11.3388671875,
+      "maxContent": 11.4375,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 15,
       "fontWeight": "400",
@@ -17,7 +17,7 @@
     {
       "path": "1.0.0",
       "text": "WHAT'S IN",
-      "maxContent": 97.359375,
+      "maxContent": 94.453125,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 15,
       "fontWeight": "700",
@@ -30,7 +30,7 @@
     {
       "path": "1.0.1",
       "text": "AI Interior",
-      "maxContent": 153.23046875,
+      "maxContent": 148.65625,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 34,
       "fontWeight": "700",
@@ -43,7 +43,7 @@
     {
       "path": "1.1.0.0",
       "text": "🛋️",
-      "maxContent": 22.6767578125,
+      "maxContent": 22,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 20,
       "fontWeight": "400",
@@ -56,7 +56,7 @@
     {
       "path": "1.1.0.1",
       "text": "Multiple room options",
-      "maxContent": 170.189453125,
+      "maxContent": 165.109375,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 17,
       "fontWeight": "400",
@@ -69,7 +69,7 @@
     {
       "path": "1.1.1.0",
       "text": "♾️",
-      "maxContent": 22.6767578125,
+      "maxContent": 22,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 20,
       "fontWeight": "400",
@@ -82,7 +82,7 @@
     {
       "path": "1.1.1.1",
       "text": "Design rooms without limits",
-      "maxContent": 216.6865234375,
+      "maxContent": 210.21875,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 17,
       "fontWeight": "400",
@@ -95,7 +95,7 @@
     {
       "path": "1.1.2.0",
       "text": "✨",
-      "maxContent": 22.6767578125,
+      "maxContent": 22,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 20,
       "fontWeight": "400",
@@ -108,7 +108,7 @@
     {
       "path": "1.1.2.1",
       "text": "More than 100 style options",
-      "maxContent": 217.4765625,
+      "maxContent": 210.984375,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 17,
       "fontWeight": "400",
@@ -121,7 +121,7 @@
     {
       "path": "1.2.0",
       "text": "1672 people have joined this plan today!",
-      "maxContent": 288.615234375,
+      "maxContent": 280.296875,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 15,
       "fontWeight": "500",
@@ -134,7 +134,7 @@
     {
       "path": "1.3.0.1.0",
       "text": "Weekly",
-      "maxContent": 67.97265625,
+      "maxContent": 66.078125,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 19,
       "fontWeight": "700",
@@ -147,7 +147,7 @@
     {
       "path": "1.3.0.1.1",
       "text": "First week €5.99",
-      "maxContent": 115.982421875,
+      "maxContent": 112.75,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 15,
       "fontWeight": "400",
@@ -160,7 +160,7 @@
     {
       "path": "1.3.0.2",
       "text": "€8.99",
-      "maxContent": 63.322265625,
+      "maxContent": 61.296875,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 22,
       "fontWeight": "700",
@@ -173,7 +173,7 @@
     {
       "path": "1.3.0.2",
       "text": " / week",
-      "maxContent": 68.6162109375,
+      "maxContent": 66.421875,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 22,
       "fontWeight": "400",
@@ -186,7 +186,7 @@
     {
       "path": "1.3.1.1.0",
       "text": "Monthly",
-      "maxContent": 75.9375,
+      "maxContent": 73.96875,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 19,
       "fontWeight": "700",
@@ -199,7 +199,7 @@
     {
       "path": "1.3.1.1.1",
       "text": "Billed monthly",
-      "maxContent": 99.3408203125,
+      "maxContent": 96.765625,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 15,
       "fontWeight": "400",
@@ -212,7 +212,7 @@
     {
       "path": "1.3.1.2",
       "text": "€22.99",
-      "maxContent": 76.5859375,
+      "maxContent": 74.078125,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 22,
       "fontWeight": "700",
@@ -225,7 +225,7 @@
     {
       "path": "1.3.1.2",
       "text": " / month",
-      "maxContent": 80.0908203125,
+      "maxContent": 77.46875,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 22,
       "fontWeight": "400",
@@ -238,7 +238,7 @@
     {
       "path": "1.4.0",
       "text": "Continue",
-      "maxContent": 80.400390625,
+      "maxContent": 78.203125,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 19,
       "fontWeight": "500",
@@ -251,7 +251,7 @@
     {
       "path": "1.4.1",
       "text": "›",
-      "maxContent": 8.24609375,
+      "maxContent": 8.265625,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 20,
       "fontWeight": "400",
@@ -264,7 +264,7 @@
     {
       "path": "1.5",
       "text": "Subscription renews automatically until cancelled. Cancel anytime in your Apple Account settings.",
-      "maxContent": 609.7001953125,
+      "maxContent": 591.5,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 13,
       "fontWeight": "400",

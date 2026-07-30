@@ -37,7 +37,10 @@ let package = Package(
         ),
         .testTarget(
             name: "UpliftLayoutTests",
-            dependencies: ["UpliftLayout"],
+            // Also depends on UpliftFunnel, because the CoreText measurer lives
+            // there — the layout target may not import a text framework — and
+            // it is asserted against the same recorded baseline as the solver.
+            dependencies: ["UpliftLayout", "UpliftFunnel"],
             path: "Tests/UpliftLayoutTests",
             // The acceptance corpus and the frames the web renderer produced
             // for it. Copied from funnel-platform rather than referenced,

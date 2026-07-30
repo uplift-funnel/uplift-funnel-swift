@@ -1,5 +1,6 @@
 import XCTest
 @testable import UpliftLayout
+@testable import UpliftFunnel
 
 /// The solver against the browser, on the real documents.
 ///
@@ -122,7 +123,11 @@ final class LayoutParityTests: XCTestCase {
 
     // MARK: - the comparison
 
-    private func compare(shot: String) throws -> (matched: Int, failures: [String]) {
+    private func compare(
+        shot: String,
+        measurer override: (any TextMeasuring)? = nil,
+        tolerance: Double = 0
+    ) throws -> (matched: Int, failures: [String], worst: Double) {
         let base = try json("\(shot).frames")
         let params = try XCTUnwrap(base["params"] as? [String: Any])
         let expected = try XCTUnwrap(base["frames"] as? [[String: Any]])
@@ -153,12 +158,13 @@ final class LayoutParityTests: XCTestCase {
             safeTop: 51
         )
 
-        let solved = try FlexSolver(measurer: try measurer(for: shot))
+        let solved = try FlexSolver(measurer: override ?? (try measurer(for: shot)))
             .solve(root: tree, viewport: viewport)
         let byPath = Dictionary(uniqueKeysWithValues: solved.map { ($0.path, $0.rect) })
 
         var failures: [String] = []
         var matched = 0
+        var worstOff = 0.0
         for want in expected {
             guard let path = want["path"] as? String else { continue }
             guard let got = byPath[path] else {
@@ -171,7 +177,10 @@ final class LayoutParityTests: XCTestCase {
                 w: (want["w"] as? NSNumber)?.doubleValue ?? 0,
                 h: (want["h"] as? NSNumber)?.doubleValue ?? 0
             )
-            if got.x == e.x && got.y == e.y && got.width == e.w && got.height == e.h {
+            let off = max(abs(got.x - e.x), abs(got.y - e.y),
+                          abs(got.width - e.w), abs(got.height - e.h))
+            if off > worstOff { worstOff = off }
+            if off <= tolerance {
                 matched += 1
             } else {
                 // Only the axes that actually differ, so the eye goes to the
@@ -184,7 +193,7 @@ final class LayoutParityTests: XCTestCase {
                 failures.append("\(path): " + bits.joined(separator: "  "))
             }
         }
-        return (matched, failures)
+        return (matched, failures, worstOff)
     }
 
     // MARK: - the report
@@ -210,7 +219,7 @@ final class LayoutParityTests: XCTestCase {
         ]
         var report: [String] = []
         for (shot, want) in floor.sorted(by: { $0.key < $1.key }) {
-            let (matched, failures) = try compare(shot: shot)
+            let (matched, failures, _) = try compare(shot: shot)
             let total = matched + failures.count
             report.append("  \(shot): \(matched)/\(total)")
             if !failures.isEmpty {
@@ -222,5 +231,41 @@ final class LayoutParityTests: XCTestCase {
             )
         }
         print("FRAME PARITY\n" + report.joined(separator: "\n"))
+    }
+
+    /// The same comparison with CoreText doing the shaping, which is what runs
+    /// on a device — and the number that says what is actually left to do.
+    ///
+    /// It is much worse than the stub run, and the shape of the failure is the
+    /// point. The worst offsets are 23.188 and 30.156, which are not drifts:
+    /// they are `lu(16 × 1.45)` and `lu(20 × 1.5)` — ONE LINE, exactly. A
+    /// sub-point width difference is harmless in the middle of a box and
+    /// decisive at a wrap boundary, where it flips whether the last word fits.
+    /// One extra line then moves every sibling below it.
+    ///
+    /// So the median of 0.0117pt in `CoreTextMeasurerTests` is necessary and
+    /// not sufficient: closing this needs the two shapers to agree about
+    /// BREAKING, not just about width, and the remaining work is to find which
+    /// runs sit near a boundary and why they fall the other way. Reported
+    /// rather than ratcheted until then — a floor here would lock in a number
+    /// whose cause is not yet understood.
+    func testFrameParityWithCoreTextShaping() throws {
+        let shots = [
+            "web-01-paywall-default", "web-02-paywall-monthly", "web-03-welcome",
+            "web-04-name-input", "web-05-focus-unanswered", "web-06-focus-answered",
+            "web-07-name-invalid",
+        ]
+        var report: [String] = []
+        for shot in shots {
+            // Within a quarter point, which is four times the layout grid and
+            // still finer than a device pixel at 3×.
+            let real = try compare(shot: shot, measurer: CoreTextMeasurer(), tolerance: 0.25)
+            let total = real.matched + real.failures.count
+            report.append(String(
+                format: "  %@: %d/%d within 0.25pt, worst %.3f",
+                shot, real.matched, total, real.worst
+            ))
+        }
+        print("CORETEXT PARITY\n" + report.joined(separator: "\n"))
     }
 }

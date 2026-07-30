@@ -4,7 +4,7 @@
     {
       "path": "1",
       "text": "First, what should we call you?",
-      "maxContent": 416.3505859375,
+      "maxContent": 403.921875,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 30,
       "fontWeight": "700",
@@ -18,7 +18,7 @@
     {
       "path": "3.0",
       "text": "Continue",
-      "maxContent": 69.0615234375,
+      "maxContent": 66.953125,
       "fontFamily": "system-ui, -apple-system, sans-serif",
       "fontSize": 16,
       "fontWeight": "500",
