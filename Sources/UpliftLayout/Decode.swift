@@ -460,15 +460,47 @@ public enum Decoder {
         return ""
     }
 
+    /// `{{token}}` substitution, matching `render/context.ts`.
+    ///
+    /// An unresolved token — or one whose value is EMPTY — renders as the
+    /// literal `{{name}}` rather than as nothing. Text is measured, so a token
+    /// that collapses to "" changes the width of the line it is on: the focus
+    /// screen's headline is recorded by the browser with its braces still in
+    /// place, and a renderer that dropped them lays out a shorter sentence than
+    /// the one on screen.
+    ///
+    /// The empty case was wrong here until the TypeScript port was checked
+    /// against the same recording. It had been substituting an empty value,
+    /// which the corpus never exercises — `first_name` is either absent or set.
     static func interpolate(_ s: String, input: LayoutInput) -> String {
-        var out = s
-        for (k, v) in input.variables where k != "__stepIndex" {
-            out = out.replacingOccurrences(of: "{{\(k)}}", with: v)
+        guard s.contains("{{") else { return s }
+        var out = ""
+        var rest = Substring(s)
+        while let open = rest.range(of: "{{") {
+            guard let close = rest.range(of: "}}", range: open.upperBound..<rest.endIndex) else {
+                break
+            }
+            let name = rest[open.upperBound..<close.lowerBound]
+                .trimmingCharacters(in: .whitespaces)
+            let value = input.variables[name] ?? input.selections[name]
+            out += rest[rest.startIndex..<open.lowerBound]
+            if let value, !value.isEmpty {
+                out += displayValue(value)
+            } else {
+                out += "{{\(name)}}"
+            }
+            rest = rest[close.upperBound...]
         }
-        for (k, v) in input.selections {
-            out = out.replacingOccurrences(of: "{{\(k)}}", with: v)
-        }
-        return out
+        return out + rest
+    }
+
+    /// A multi-select writes its variable JSON-encoded (`["a","b"]`). Copy that
+    /// interpolates one must read as a list, not leak the array literal.
+    private static func displayValue(_ v: String) -> String {
+        guard v.hasPrefix("["), let data = v.data(using: .utf8),
+              let list = try? JSONSerialization.jsonObject(with: data) as? [Any]
+        else { return v }
+        return list.map { "\($0)" }.joined(separator: ", ")
     }
 
     // MARK: - primitives
@@ -507,16 +539,29 @@ public enum Decoder {
     }
 }
 
-/// The type ramp, which must equal `TYPE_RAMP` in `render/context.ts`.
+/// The type ramp, normative per PRIMITIVE_SPEC §4 and mirrored by
+/// `@funnel/layout`'s `ramp.ts`.
+///
+/// Four of these six were WRONG until the TypeScript port was written and the
+/// two tables were finally read side by side: `title` was 28/1.2 against the
+/// spec's 26/1.15, `subtitle` 20 against 19, `label` 15/1.3 against 14/1.2, and
+/// `display` 1.15 against 1.1. The comment here claimed they were equal.
+///
+/// The acceptance corpus could not catch it. Every role-bearing node in both
+/// fixtures also sets an explicit `size`, so these numbers were never once
+/// consulted in a passing test — a document that leaned on a role would have
+/// rendered two points different on iOS with the whole suite green. That is the
+/// argument for the port in one paragraph: a second implementation reading the
+/// same spec found what a shared test corpus structurally could not.
 struct Ramp { let size: Double; let weight: String; let lineHeight: Double }
 
 let TYPE_RAMP: [String: Ramp] = [
-    "display": Ramp(size: 34, weight: "bold", lineHeight: 1.15),
-    "title": Ramp(size: 28, weight: "bold", lineHeight: 1.2),
-    "subtitle": Ramp(size: 20, weight: "medium", lineHeight: 1.3),
+    "display": Ramp(size: 34, weight: "bold", lineHeight: 1.1),
+    "title": Ramp(size: 26, weight: "bold", lineHeight: 1.15),
+    "subtitle": Ramp(size: 19, weight: "medium", lineHeight: 1.3),
     "body": Ramp(size: 16, weight: "regular", lineHeight: 1.45),
     "caption": Ramp(size: 13, weight: "regular", lineHeight: 1.4),
-    "label": Ramp(size: 15, weight: "medium", lineHeight: 1.3),
+    "label": Ramp(size: 14, weight: "medium", lineHeight: 1.2),
 ]
 
 let WEIGHTS: [String: Int] = [
