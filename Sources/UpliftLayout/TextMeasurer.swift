@@ -29,19 +29,29 @@ public struct TextSegment: Equatable, Sendable {
     /// inherits the node's, and the node's is unitless — so a 22pt span under a
     /// 1.45 node gets a 31.9pt line box, not the node's 23.2.
     public var lineHeight: Double?
+    /// The span's own colour, or nil to take the node's.
+    ///
+    /// Ignored by every measurer — colour has no width. It rides here because a
+    /// span IS a styled stretch of text and the painter needs the styling
+    /// per-stretch: "Save 40%" in emerald beside the rest in grey is one run
+    /// with two colours, and splitting the run to carry them would change how
+    /// it wraps.
+    public var color: RGBA?
 
     public init(
         text: String,
         fontSize: Double,
         fontWeight: Int = 400,
         letterSpacing: Double = 0,
-        lineHeight: Double? = nil
+        lineHeight: Double? = nil,
+        color: RGBA? = nil
     ) {
         self.text = text
         self.fontSize = fontSize
         self.fontWeight = fontWeight
         self.letterSpacing = letterSpacing
         self.lineHeight = lineHeight
+        self.color = color
     }
 }
 

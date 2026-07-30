@@ -60,8 +60,31 @@ public struct LayoutNode: Sendable {
     public var alignX: Align?
     public var alignY: Align?
 
+    // style — what the node looks like. Carried alongside the layout facts
+    // rather than in a parallel tree, because a state delta re-resolves both at
+    // once and splitting them would mean walking the document twice and hoping
+    // the two walks agreed.
+    public var paint: PaintStyle = .none
+    /// Whether descendants are cut to this node's shape (`layout.clip`, or a
+    /// scroller, which clips on its cross axis by definition).
+    public var clipsContent: Bool = false
+
     // leaf content, for the intrinsic pass
     public var text: TextRunSpec?
+    public var textColor: RGBA?
+    public var textAlign: TextAlign = .start
+    /// `-webkit-line-clamp`: the run is truncated rather than laid out taller.
+    public var maxLines: Int?
+    public var image: (url: String, fit: ImageFit, position: Point2D)?
+
+    /// A control's own text — an input's answer, or its placeholder when there
+    /// is none.
+    ///
+    /// Separate from `text` because it must NOT size the box: a text field is
+    /// one line whatever the placeholder says, and measuring it would make the
+    /// field grow when the copy got longer. `controlHeight` already states the
+    /// height; this only says what to paint inside it.
+    public var controlText: TextRunSpec?
 
     /// A native control's own height, when the platform decides it rather than
     /// content does.

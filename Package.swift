@@ -46,7 +46,12 @@ let package = Package(
             // for it. Copied from funnel-platform rather than referenced,
             // because they are in a different repository — `Scripts/sync-baseline.sh`
             // refreshes them and `BaselineFreshnessTests` explains the risk.
-            resources: [.copy("Baseline")]
+            resources: [
+                .copy("Baseline"),
+                // Paint goldens are OURS, unlike Baseline — see
+                // `PaintGoldenTests` for why they are not the web's PNGs.
+                .copy("PaintGoldens"),
+            ]
         ),
         .testTarget(
             name: "UpliftFunnelTests",

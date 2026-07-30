@@ -34,16 +34,26 @@ public struct LayoutInput: Sendable {
     /// right length.
     public var catalog: [String: String]
 
+    /// The flow's colour tokens — `primary`, `surface`, `border` and the rest.
+    ///
+    /// A node names a token far more often than a hex value, so without these
+    /// every card in the corpus decodes to no fill at all. Pulled from the
+    /// document by `layoutTree(flow:)` for the same reason the catalog is: the
+    /// caller should not have to know where the theme lives.
+    public var tokens: [String: String]
+
     public init(
         selections: [String: String] = [:],
         variables: [String: String] = [:],
         catalog: [String: String] = [:],
-        products: [String: [String: String]] = [:]
+        products: [String: [String: String]] = [:],
+        tokens: [String: String] = [:]
     ) {
         self.selections = selections
         self.variables = variables
         self.catalog = catalog
         self.products = products
+        self.tokens = tokens
     }
 }
 
@@ -71,6 +81,11 @@ public enum Decoder {
         let all = flow["localizations"] as? [String: [String: String]] ?? [:]
         var merged = input
         merged.catalog = all[loc] ?? all[(flow["default_locale"] as? String) ?? "en"] ?? [:]
+        if merged.tokens.isEmpty {
+            let theme = flow["theme"] as? [String: Any]
+            let tokens = theme?["tokens"] as? [String: Any]
+            merged.tokens = (tokens?["colors"] as? [String: String]) ?? [:]
+        }
         return layoutTree(screen: screens[screenIndex], input: merged)
     }
 
@@ -88,7 +103,7 @@ public enum Decoder {
         // Which state this node renders in, and what it passes down. A node
         // that establishes one gives it to its whole subtree — that is how a
         // radio dot inside a plan card knows the card is selected.
-        let own = ownState(behavior, input: input)
+        let own = ownState(behavior, raw: raw, input: input)
         let active = own ?? inheritedState
         let delta = active.flatMap { (raw["states"] as? [String: Any])?[$0] as? [String: Any] }
 
@@ -149,9 +164,34 @@ public enum Decoder {
 
         let styleG = merge(raw["style"] as? [String: Any], delta?["style"] as? [String: Any])
         if let stroke = styleG?["stroke"] as? [String: Any] {
-            n.borderWidth = dbl(stroke["width"]) ?? 1
+            // Layout only cares that an INSIDE stroke eats the content box. An
+            // outside one is painted past the bounds and moves nothing, so it
+            // must not narrow the children.
+            let inside = (stroke["align"] as? String ?? "inside") == "inside"
+            n.borderWidth = inside ? (dbl(stroke["width"]) ?? 1) : 0
         }
+        n.paint = paintStyle(styleG, tokens: input.tokens)
+        n.clipsContent = (layoutG?["clip"] as? Bool) ?? (layoutG?["scroll"] != nil)
         n.text = textRun(raw, type: type, style: styleG, input: input)
+
+        let props = raw["props"] as? [String: Any]
+        if n.text != nil {
+            let t = styleG?["text"] as? [String: Any]
+            n.textColor = RGBA.parse(t?["color"] as? String, tokens: input.tokens)
+                // The renderer falls back to the palette's primary text colour
+                // rather than to black, and on a dark theme those differ.
+                ?? RGBA.parse("text_primary", tokens: input.tokens)
+            n.textAlign = (props?["align"] as? String).flatMap(TextAlign.init(rawValue:)) ?? .start
+            n.maxLines = (props?["maxLines"] as? NSNumber)?.intValue
+        }
+        if type == "image" {
+            let p = (props?["position"] as? [NSNumber])?.map(\.doubleValue) ?? [0.5, 0.5]
+            n.image = (
+                url: interpolate(localized(props?["url"], input), input: input),
+                fit: (props?["fit"] as? String).flatMap(ImageFit.init(rawValue:)) ?? .cover,
+                position: Point2D(x: p.first ?? 0.5, y: p.count > 1 ? p[1] : 0.5)
+            )
+        }
 
         // `controlBox` in the web renderer: 12pt of vertical padding around a
         // single 16pt body line. One line, always — a text field does not grow
@@ -161,6 +201,28 @@ public enum Decoder {
             if kind != "toggle" && kind != "slider" {
                 let body = TYPE_RAMP["body"]!
                 n.controlHeight = 2 * 12 + lu(body.size * body.lineHeight)
+                // `controlBox` on the web: 12pt vertical, 14pt horizontal.
+                n.padding = Edges(top: 12, right: 14, bottom: 12, left: 14)
+
+                // The answer if there is one, the placeholder if not — which is
+                // what a text field shows and what the two `name-input` shots
+                // differ by.
+                let answer = (raw["bind"] as? [String: Any])?["save_to"] as? String
+                let value = answer.flatMap { input.variables[$0] } ?? ""
+                let showing = value.isEmpty
+                    ? interpolate(localized(props?["placeholder"], input), input: input)
+                    : value
+                if !showing.isEmpty {
+                    n.controlText = TextRunSpec(
+                        text: showing,
+                        fontSize: body.size,
+                        fontWeight: WEIGHTS[body.weight] ?? 400,
+                        lineHeight: body.lineHeight
+                    )
+                    n.textColor = RGBA.parse(
+                        value.isEmpty ? "text_secondary" : "text_primary", tokens: input.tokens
+                    )
+                }
             }
         }
 
@@ -180,7 +242,9 @@ public enum Decoder {
 
     /// Mirrors `ownState` in `render/state.ts`, including its precedence: a
     /// step's position in a sequence is structural and nothing overrides it.
-    private static func ownState(_ behavior: [String: Any]?, input: LayoutInput) -> String? {
+    private static func ownState(
+        _ behavior: [String: Any]?, raw: [String: Any], input: LayoutInput
+    ) -> String? {
         guard let b = behavior else { return nil }
         if let step = b["step"] as? [String: Any], let idx = (step["index"] as? NSNumber)?.intValue {
             let current = Int(input.variables["__stepIndex"] ?? "0") ?? 0
@@ -188,6 +252,9 @@ public enum Decoder {
             if idx == current { return "current" }
             return "upcoming"
         }
+        // Between `step` and `select`, exactly as `render/state.ts` orders them:
+        // a failing field reddens even inside a selected card.
+        if isInvalid(raw, input: input) { return "invalid" }
         if let select = b["select"] as? [String: Any],
            let group = select["group"] as? String,
            let value = select["value"] as? String {
@@ -198,6 +265,69 @@ public enum Decoder {
             return chosen == value ? "selected" : nil
         }
         return nil
+    }
+
+    /// Whether a node's field has been answered AND fails its own rules.
+    ///
+    /// Answered first, and it is the whole difference between the two
+    /// `name-input` shots: an untouched empty field is not invalid, a touched
+    /// and emptied one is. `selections` records the touch — a key present with
+    /// an empty value — which is why absence and emptiness cannot be collapsed.
+    private static func isInvalid(_ raw: [String: Any], input: LayoutInput) -> Bool {
+        guard (raw["behavior"] as? [String: Any])?["input"] != nil,
+              let field = governedField(raw) else { return false }
+        guard let value = input.selections[field.saveTo] else { return false }
+        return field.rules.contains { !ruleHolds($0, value: value) }
+    }
+
+    /// The rules a node answers for — its own, or its first descendant's.
+    ///
+    /// A box carrying `behavior.input` claims the field beneath it, which is
+    /// how the pill AROUND the text field reddens: the input has no edge of its
+    /// own, so the container has to know the field failed.
+    private static func governedField(
+        _ raw: [String: Any]
+    ) -> (rules: [[String: Any]], saveTo: String)? {
+        let rules = ((raw["behavior"] as? [String: Any])?["input"] as? [String: Any])?["validate"]
+        if let rules = rules as? [[String: Any]], !rules.isEmpty,
+           let saveTo = (raw["bind"] as? [String: Any])?["save_to"] as? String {
+            return (rules, saveTo)
+        }
+        for child in (raw["children"] as? [[String: Any]]) ?? [] {
+            if let hit = governedField(child) { return hit }
+        }
+        return nil
+    }
+
+    private static func ruleHolds(_ rule: [String: Any], value: String) -> Bool {
+        let threshold = rule["value"]
+        switch rule["rule"] as? String {
+        case "required":
+            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case "min_length":
+            return value.count >= (Int("\(threshold ?? 0)") ?? 0)
+        case "max_length":
+            return value.count <= (Int("\(threshold ?? "")") ?? .max)
+        case "min":
+            // A non-numeric value is not "too small" — that is a different
+            // failure and `min` is not the rule that should report it.
+            guard let n = Double(value) else { return true }
+            return n >= (dbl(threshold) ?? -.greatestFiniteMagnitude)
+        case "max":
+            guard let n = Double(value) else { return true }
+            return n <= (dbl(threshold) ?? .greatestFiniteMagnitude)
+        case "has_uppercase": return value.contains { $0.isUppercase }
+        case "has_lowercase": return value.contains { $0.isLowercase }
+        case "has_digit": return value.contains { $0.isNumber }
+        default:
+            // An unknown rule cannot be checked, and failing a field over a rule
+            // this build does not understand would break older documents.
+            // `pattern` lands here on purpose: NSRegularExpression and
+            // JavaScript's engine disagree about enough syntax that running the
+            // author's regex through a different one would redden fields the
+            // browser passes.
+            return true
+        }
     }
 
     /// Mirrors `evaluateCondition`, for the operators the corpus uses.
@@ -300,7 +430,8 @@ public enum Decoder {
                 fontWeight: (s?["weight"] as? String).flatMap { WEIGHTS[$0] }
                     ?? (s == nil ? weight : (WEIGHTS[ramp.weight] ?? weight)),
                 letterSpacing: dbl(s?["letterSpacing"]) ?? tracking,
-                lineHeight: dbl(s?["lineHeight"])
+                lineHeight: dbl(s?["lineHeight"]),
+                color: RGBA.parse(s?["color"] as? String, tokens: input.tokens)
             )
         }
     }
@@ -318,7 +449,7 @@ public enum Decoder {
     /// The corpus is laid out against resolved copy, which the baseline
     /// recorded; a `{ key }` that reached here would be a missing catalog
     /// entry, and measuring the key text would be a silent wrong answer.
-    private static func localized(_ v: Any?, _ input: LayoutInput) -> String {
+    static func localized(_ v: Any?, _ input: LayoutInput) -> String {
         if let s = v as? String { return s }
         if let d = v as? [String: Any], let k = d["key"] as? String {
             // A key with no entry is left visible rather than blanked: an empty
@@ -329,7 +460,7 @@ public enum Decoder {
         return ""
     }
 
-    private static func interpolate(_ s: String, input: LayoutInput) -> String {
+    static func interpolate(_ s: String, input: LayoutInput) -> String {
         var out = s
         for (k, v) in input.variables where k != "__stepIndex" {
             out = out.replacingOccurrences(of: "{{\(k)}}", with: v)
@@ -349,7 +480,7 @@ public enum Decoder {
         return b
     }
 
-    private static func dbl(_ v: Any?) -> Double? { (v as? NSNumber)?.doubleValue }
+    static func dbl(_ v: Any?) -> Double? { (v as? NSNumber)?.doubleValue }
 
     private static func size(_ v: Any?) -> Size {
         if let s = v as? String {
