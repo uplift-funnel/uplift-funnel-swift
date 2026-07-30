@@ -225,17 +225,36 @@ public enum Decoder {
         input: LayoutInput
     ) -> TextRunSpec? {
         guard type == "text" || type == "icon" else { return nil }
-        let text = type == "icon"
-            ? ((raw["props"] as? [String: Any])?["emoji"] as? String ?? "")
-            : plainText(raw["props"] as? [String: Any], input: input)
+        let props = raw["props"] as? [String: Any]
+
+        // An icon is NOT a styled text node. The renderer builds it from `props`
+        // alone — size, glyph, colour — and pins `line-height: 1`; it never
+        // looks at `style.text`, so a role, a weight or a line height set on one
+        // does nothing on the web and must do nothing here.
+        //
+        // Reading the ramp instead put every emoji's box at 1.45 line heights:
+        // an 18pt icon came out 26.09 tall against Chromium's 18, and the extra
+        // eight points pushed every sibling below it down the screen.
+        if type == "icon" {
+            let glyph = (props?["emoji"] as? String) ?? (props?["glyph"] as? String) ?? "•"
+            guard !glyph.isEmpty else { return nil }
+            return TextRunSpec(
+                text: glyph,
+                fontSize: dbl(props?["size"]) ?? 24,
+                fontWeight: 400,
+                letterSpacing: 0,
+                lineHeight: 1
+            )
+        }
+
+        let text = plainText(props, input: input)
         guard !text.isEmpty else { return nil }
         let t = style?["text"] as? [String: Any]
         let role = t?["role"] as? String ?? "body"
         let ramp = TYPE_RAMP[role] ?? TYPE_RAMP["body"]!
-        let size = dbl(t?["size"]) ?? (type == "icon" ? dbl((raw["props"] as? [String: Any])?["size"]) ?? 20 : ramp.size)
         return TextRunSpec(
             text: text,
-            fontSize: size,
+            fontSize: dbl(t?["size"]) ?? ramp.size,
             fontWeight: WEIGHTS[t?["weight"] as? String ?? ramp.weight] ?? 400,
             letterSpacing: dbl(t?["letterSpacing"]) ?? 0,
             lineHeight: dbl(t?["lineHeight"]) ?? ramp.lineHeight

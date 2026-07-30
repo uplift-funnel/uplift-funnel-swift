@@ -53,7 +53,23 @@ public struct FlexSolver: Sendable {
     func intrinsicSize(_ n: LayoutNode, available: Size2D) throws -> Size2D {
         let w = try resolvedWidth(n, available: available)
         let h = try resolvedHeight(n, available: available, width: w)
-        return Size2D(width: lu(w), height: lu(h))
+        return Size2D(
+            width: quantised(w, when: n.width),
+            height: quantised(h, when: n.height)
+        )
+    }
+
+    /// A content-derived size rounds UP to the grid; a declared or inherited one
+    /// rounds down like every other length.
+    ///
+    /// The asymmetry is the point. Flooring a hug width makes the box narrower
+    /// than the content that sized it, and the content then reflows inside it —
+    /// text that fit on one line takes two, in an element built to hold it on
+    /// one. A declared `.points(24)` has no such feedback loop, and `.fill` is
+    /// the parent's number rather than the content's.
+    private func quantised(_ value: Double, when size: Size) -> Double {
+        if case .hug = size { return luCeil(value) }
+        return lu(value)
     }
 
     private func resolvedWidth(_ n: LayoutNode, available: Size2D) throws -> Double {
@@ -108,7 +124,13 @@ public struct FlexSolver: Sendable {
         case .grid, .wrap:
             throw LayoutUnsupported.mode(n.mode, path: n.path)
         }
-        return content + n.padding.horizontal + 2 * n.borderWidth
+        // Capped at what is on offer, which is what makes `hug` mean CSS's
+        // fit-content — `min(max-content, available)` — for a box and not just
+        // for text. Uncapped, an option row asked for 373pt in the 342pt it was
+        // going to get, and its HEIGHT was then measured at 373: the subtitle
+        // fit on one line at a width the row never had, so the row came out a
+        // whole line short and every row below it rode up the screen.
+        return min(content + n.padding.horizontal + 2 * n.borderWidth, available.width)
     }
 
     private func hugHeight(_ n: LayoutNode, available: Size2D) throws -> Double {
@@ -125,14 +147,45 @@ public struct FlexSolver: Sendable {
         )
         let flow = n.children.filter { $0.position == .relative }
         guard !flow.isEmpty else { return n.padding.vertical + 2 * n.borderWidth }
-        var heights: [Double] = []
-        for c in flow { heights.append(try intrinsicSize(c, available: inner).height) }
+
         let content: Double
         switch n.mode {
-        case .column:
-            content = heights.reduce(0, +) + n.gapMain * Double(flow.count - 1)
-        case .row, .stack:
+        case .column, .stack:
+            var heights: [Double] = []
+            for c in flow { heights.append(try intrinsicSize(c, available: inner).height) }
+            content = n.mode == .column
+                ? heights.reduce(0, +) + n.gapMain * Double(flow.count - 1)
+                : (heights.max() ?? 0)
+
+        case .row:
+            // Each child measured at the width it will actually be given, not
+            // at the row's whole content box. The two differ for every row with
+            // more than one child, and the error is not small: a growing text
+            // column measured at the full 310pt fits its subtitle on one line,
+            // where at its real 277pt share the subtitle takes two — so the row
+            // came out a whole line short and everything below it rode up.
+            //
+            // The recorded-metrics measurer cannot see this. It replays fixed
+            // line counts per string, so the text does not re-wrap however wrong
+            // the width is, and the bug only appears once a real shaper answers.
+            let gaps = n.gapMain * Double(max(0, flow.count - 1))
+            let widths = try mainAxisSizes(
+                flow: flow,
+                available: inner,
+                mainExtent: inner.width,
+                gaps: gaps,
+                horizontal: true
+            )
+            var heights: [Double] = []
+            for (i, c) in flow.enumerated() {
+                heights.append(
+                    try intrinsicSize(
+                        c, available: Size2D(width: widths[i], height: inner.height)
+                    ).height
+                )
+            }
             content = heights.max() ?? 0
+
         case .grid, .wrap:
             throw LayoutUnsupported.mode(n.mode, path: n.path)
         }
@@ -187,19 +240,19 @@ public struct FlexSolver: Sendable {
         try placeFlow(n, flow: flow, content: content, viewport: viewport, out: &out)
     }
 
-    /// The two-pass distribution: base sizes, then free space by grow weight.
-    private func placeFlow(
-        _ n: LayoutNode,
+    /// How the main axis is divided between the children.
+    ///
+    /// Pulled out of placement because MEASURING needs the same answer. A row
+    /// that hugs its height has to know how tall its children are, and a child's
+    /// height depends on how wide it ends up — so the widths have to be settled
+    /// before the heights are asked for, exactly as they are when placing.
+    private func mainAxisSizes(
         flow: [LayoutNode],
-        content: Rect,
-        viewport: Viewport,
-        out: inout [SolvedFrame]
-    ) throws {
-        let horizontal = n.mode == .row
-        let mainExtent = horizontal ? content.width : content.height
-        let crossExtent = horizontal ? content.height : content.width
-        let gaps = n.gapMain * Double(max(0, flow.count - 1))
-
+        available: Size2D,
+        mainExtent: Double,
+        gaps: Double,
+        horizontal: Bool
+    ) throws -> [Double] {
         // Pass one: what each child is before any free space is shared.
         //
         // A grow child's base is ZERO, not its content size. That is CSS's
@@ -216,28 +269,41 @@ public struct FlexSolver: Sendable {
             if weight > 0 {
                 bases.append(0)
             } else {
-                let avail = Size2D(
-                    width: horizontal ? content.width : content.width,
-                    height: horizontal ? content.height : content.height
-                )
-                let s = try intrinsicSize(c, available: avail)
+                let s = try intrinsicSize(c, available: available)
                 bases.append(horizontal ? s.width : s.height)
             }
         }
 
-        let used = bases.reduce(0, +) + gaps
-        let free = mainExtent - used
+        let free = mainExtent - (bases.reduce(0, +) + gaps)
         let totalWeight = growWeights.reduce(0, +)
         // Negative free space is NOT redistributed. css.ts sets `flexShrink: 0`
         // on any explicit main-axis size, so a 300pt hero inside a scrolling
         // column stays 300pt and the parent overflows — the scroll is the
         // answer, not squashing the child.
-        var mains = bases
-        if totalWeight > 0 && free > 0 {
-            for i in mains.indices {
-                mains[i] = lu(bases[i] + free * (growWeights[i] / totalWeight))
-            }
-        }
+        guard totalWeight > 0, free > 0 else { return bases }
+        return bases.indices.map { lu(bases[$0] + free * (growWeights[$0] / totalWeight)) }
+    }
+
+    /// The two-pass distribution: base sizes, then free space by grow weight.
+    private func placeFlow(
+        _ n: LayoutNode,
+        flow: [LayoutNode],
+        content: Rect,
+        viewport: Viewport,
+        out: inout [SolvedFrame]
+    ) throws {
+        let horizontal = n.mode == .row
+        let mainExtent = horizontal ? content.width : content.height
+        let crossExtent = horizontal ? content.height : content.width
+        let gaps = n.gapMain * Double(max(0, flow.count - 1))
+
+        let mains = try mainAxisSizes(
+            flow: flow,
+            available: content.size,
+            mainExtent: mainExtent,
+            gaps: gaps,
+            horizontal: horizontal
+        )
 
         // Where the run starts, when it does not fill the main axis.
         let mainAlign = (horizontal ? n.alignX : n.alignY) ?? .start

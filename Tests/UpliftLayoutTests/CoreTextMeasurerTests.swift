@@ -173,6 +173,40 @@ final class CoreTextMeasurerTests: XCTestCase {
         XCTAssertNotEqual(widths[500]!, widths[600]!, accuracy: 0.001)
     }
 
+    // MARK: - the emoji face
+
+    /// Emoji must come from `AppleColorEmoji`, not `.AppleColorEmojiUI`.
+    ///
+    /// The system font's default cascade reaches the UI variant, which tracks
+    /// every emoji wider: 3pt at 18 and 4pt at 34, on elements whose entire
+    /// width is one glyph. Chromium names the plain family and gets no tracking.
+    /// Asserting the FACE rather than a width is what keeps this honest — a
+    /// width tolerance loose enough to pass either way would prove nothing.
+    func testEmojiResolveToTheUntrackedFace() {
+        let attrs: [NSAttributedString.Key: Any] = [.font: CoreTextMeasurer.font(size: 18, weight: 400)]
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: "🥱", attributes: attrs))
+        var faces: [String] = []
+        for case let run as CTRun in (CTLineGetGlyphRuns(line) as NSArray) {
+            let a = CTRunGetAttributes(run) as NSDictionary
+            guard let f = a[kCTFontAttributeName as String] else { continue }
+            faces.append(CTFontCopyPostScriptName(f as! CTFont) as String)
+        }
+        XCTAssertEqual(faces, ["AppleColorEmoji"], "the tracked UI variant crept back in")
+    }
+
+    /// Prepending to the cascade must not strand the rest of it.
+    ///
+    /// Replacing the list outright is the easy mistake and the corpus catches it
+    /// immediately: the paywall's dismiss ✕ is Zapf Dingbats, which is neither
+    /// the system font nor an emoji, and it would fall back to a blank.
+    func testTheRestOfTheCascadeSurvives() {
+        let attrs: [NSAttributedString.Key: Any] = [.font: CoreTextMeasurer.font(size: 15, weight: 400)]
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: "✕", attributes: attrs))
+        let width = CTLineGetTypographicBounds(line, nil, nil, nil)
+        // Chromium measures this glyph at 11.4375; a failed fallback measures 0.
+        XCTAssertEqual(width, 11.4375, accuracy: 0.05)
+    }
+
     // MARK: - trailing whitespace
 
     /// `CTLineGetTypographicBounds` counts the space hanging off a line's end;

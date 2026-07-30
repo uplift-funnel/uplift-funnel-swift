@@ -234,29 +234,51 @@ final class LayoutParityTests: XCTestCase {
     }
 
     /// The same comparison with CoreText doing the shaping, which is what runs
-    /// on a device — and the number that says what is actually left to do.
+    /// on a device.
     ///
-    /// It is much worse than the stub run, and the shape of the failure is the
-    /// point. The worst offsets are 23.188 and 30.156, which are not drifts:
-    /// they are `lu(16 × 1.45)` and `lu(20 × 1.5)` — ONE LINE, exactly. A
-    /// sub-point width difference is harmless in the middle of a box and
-    /// decisive at a wrap boundary, where it flips whether the last word fits.
-    /// One extra line then moves every sibling below it.
+    /// This began far worse than the stub run, and the shape of the failure was
+    /// the whole finding: the worst offsets were exactly `lu(16 × 1.45)` and
+    /// `lu(20 × 1.5)` — ONE LINE — which looked like the two shapers disagreeing
+    /// about where to break. They do not. Measured at the width Chromium
+    /// actually used, CoreText breaks all 74 runs in the corpus onto the same
+    /// number of lines (`WrapBoundaryTests`). The lines were wrong because the
+    /// WIDTH was wrong, and each wrap was correct for the width it was handed.
     ///
-    /// So the median of 0.0117pt in `CoreTextMeasurerTests` is necessary and
-    /// not sufficient: closing this needs the two shapers to agree about
-    /// BREAKING, not just about width, and the remaining work is to find which
-    /// runs sit near a boundary and why they fall the other way. Reported
-    /// rather than ratcheted until then — a floor here would lock in a number
-    /// whose cause is not yet understood.
+    /// Four causes, all now fixed, none of them the breaking algorithm:
+    ///   - intrinsic sizes floored to the layout grid, so a hug box came out
+    ///     narrower than the content that sized it and the content reflowed
+    ///     inside it (`luCeil`)
+    ///   - a row's hug height measured its children at the row's whole width
+    ///     instead of at their share after flexing
+    ///   - `hug` meant max-content for a box and fit-content for text, so a row
+    ///     asked for 373pt in the 342 it was going to get and was measured there
+    ///   - icons decoded through the type ramp, giving them 1.45 line heights
+    ///     where the renderer pins 1
+    ///
+    /// The stub could not see any of it. It replays fixed line counts per
+    /// string, so its text cannot re-wrap however wrong the width is — which is
+    /// exactly why both measurers are kept.
     func testFrameParityWithCoreTextShaping() throws {
-        let shots = [
-            "web-01-paywall-default", "web-02-paywall-monthly", "web-03-welcome",
-            "web-04-name-input", "web-05-focus-unanswered", "web-06-focus-answered",
-            "web-07-name-invalid",
+        // What each shot's REMAINING failures are, so the floors below mean
+        // something. Raise them as these close; never lower one.
+        //   web-01/02  the root hugs where the viewport should bound it; spans
+        //              laid out as one joined run instead of separate inline
+        //              boxes, which resizes the price row
+        //   web-04/07  the pinned footer's safe-area bookkeeping, 24pt
+        //   web-05/06  emoji, ±1pt and irreducible — Apple Color Emoji is a
+        //              bitmap face whose advance is already a whole number, so
+        //              there is no finer value to round the browser's way
+        let floor: [String: Int] = [
+            "web-01-paywall-default": 23,   // of 39
+            "web-02-paywall-monthly": 23,   // of 39
+            "web-03-welcome": 8,            // of 8 — exact
+            "web-04-name-input": 7,         // of 9
+            "web-05-focus-unanswered": 8,   // of 20
+            "web-06-focus-answered": 9,     // of 23
+            "web-07-name-invalid": 7,       // of 9
         ]
         var report: [String] = []
-        for shot in shots {
+        for (shot, want) in floor.sorted(by: { $0.key < $1.key }) {
             // Within a quarter point, which is four times the layout grid and
             // still finer than a device pixel at 3×.
             let real = try compare(shot: shot, measurer: CoreTextMeasurer(), tolerance: 0.25)
@@ -265,6 +287,12 @@ final class LayoutParityTests: XCTestCase {
                 format: "  %@: %d/%d within 0.25pt, worst %.3f",
                 shot, real.matched, total, real.worst
             ))
+            for f in real.failures.prefix(8) { report.append("      \(f)") }
+            XCTAssertGreaterThanOrEqual(
+                real.matched, want,
+                "\(shot) matched \(real.matched)/\(total) with real shaping, "
+                + "below its recorded floor of \(want)"
+            )
         }
         print("CORETEXT PARITY\n" + report.joined(separator: "\n"))
     }

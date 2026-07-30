@@ -90,6 +90,24 @@ public func lu(_ value: Double) -> Double {
     (value * 64).rounded(.down) / 64
 }
 
+/// The same grid, rounded UP — for intrinsic sizes only.
+///
+/// A hug width is a promise that the content fits, and flooring breaks the
+/// promise: a run measuring 68.8823 floors to 68.875, the box is then a
+/// hundredth of a point narrower than the text it was sized for, and the text
+/// wraps to two lines inside the box built to hold it on one. The observed
+/// failures were exactly that — 68.875 against Chromium's 68.8906, one unit
+/// apart, with double the height.
+///
+/// Chromium does not have this problem because it does not floor here.
+/// `LayoutUnit::FromFloatCeil` is what Blink resolves min/max-content with, for
+/// this reason. Positions and final frames still floor; only the question "how
+/// much room does this content need" rounds the other way.
+@inline(__always)
+public func luCeil(_ value: Double) -> Double {
+    (value * 64).rounded(.up) / 64
+}
+
 public extension Size2D {
     /// Both axes on the layout grid.
     var quantised: Size2D { Size2D(width: lu(width), height: lu(height)) }

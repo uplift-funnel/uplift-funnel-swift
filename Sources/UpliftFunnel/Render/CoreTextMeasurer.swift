@@ -35,7 +35,39 @@ public struct CoreTextMeasurer: TextMeasuring {
         let varied = CTFontDescriptorCreateCopyWithVariation(
             descriptor, axis, CGFloat(weight)
         )
-        return CTFontCreateWithFontDescriptor(varied, CGFloat(size), nil)
+        return CTFontCreateWithFontDescriptor(
+            CTFontDescriptorCreateCopyWithAttributes(varied, [
+                kCTFontCascadeListAttribute: emojiFirstCascade(for: base),
+            ] as CFDictionary),
+            CGFloat(size),
+            nil
+        )
+    }
+
+    /// The system's own fallback chain, with the untracked emoji face in front.
+    ///
+    /// Left alone, the system font falls back to `.AppleColorEmojiUI` — the
+    /// variant tuned for UI labels, which pads every emoji: measured against the
+    /// browser it is 3pt wide at 18pt and 4pt at 34pt, on an element whose whole
+    /// width IS the glyph. That is not rounding; it is tracking that the browser
+    /// does not apply, because Blink names the family `Apple Color Emoji` and
+    /// gets the plain face.
+    ///
+    /// Naming it here the way the browser does closes it to at most a point.
+    /// The residue is not recoverable: `CTFontGetAdvancesForGlyphs` already
+    /// returns whole numbers for this font — it is a bitmap face that quantises
+    /// internally — so there is no finer value left to round Chromium's way.
+    ///
+    /// PREPENDED to the default list rather than replacing it. Replacing it
+    /// strands every other fallback, and the corpus needs one immediately: the
+    /// paywall's ✕ resolves to Zapf Dingbats, which is not in the system font
+    /// and not an emoji.
+    private static func emojiFirstCascade(for base: CTFont) -> CFArray {
+        let plain = CTFontDescriptorCreateWithNameAndSize(
+            "AppleColorEmoji" as CFString, 0
+        )
+        let existing = CTFontCopyDefaultCascadeListForLanguages(base, nil) as? [CTFontDescriptor]
+        return ([plain] + (existing ?? [])) as CFArray
     }
 
     private func attributes(_ run: TextRunSpec) -> [NSAttributedString.Key: Any] {
