@@ -77,13 +77,23 @@ public struct FlexSolver: Sendable {
     private func hugWidth(_ n: LayoutNode, available: Size2D) throws -> Double {
         if let run = n.text {
             var r = run
-            r.maxWidth = available.width - n.padding.horizontal
-            return measurer.measure(r).width + n.padding.horizontal
+            let inner = available.width - n.padding.horizontal - 2 * n.borderWidth
+            r.maxWidth = inner
+            let m = measurer.measure(r)
+            // FIT-CONTENT, not the widest line. A text node renders as a block
+            // and CSS sizes it to `min(max-content, available)` — so a sentence
+            // long enough to wrap occupies the WHOLE box, even though every one
+            // of its lines is shorter than the box. Returning the widest line
+            // instead narrows the element, which then narrows its parent, and
+            // the error compounds up the tree: it is what made the welcome
+            // screen's column come out 318.83 wide instead of 342.
+            let width = m.lines.count > 1 ? inner : m.width
+            return width + n.padding.horizontal + 2 * n.borderWidth
         }
         guard !n.children.isEmpty else { return 0 }
         let inner = Size2D(
-            width: available.width - n.padding.horizontal,
-            height: available.height - n.padding.vertical
+            width: available.width - n.padding.horizontal - 2 * n.borderWidth,
+            height: available.height - n.padding.vertical - 2 * n.borderWidth
         )
         let flow = n.children.filter { $0.position == .relative }
         var widths: [Double] = []
@@ -98,22 +108,22 @@ public struct FlexSolver: Sendable {
         case .grid, .wrap:
             throw LayoutUnsupported.mode(n.mode, path: n.path)
         }
-        return content + n.padding.horizontal
+        return content + n.padding.horizontal + 2 * n.borderWidth
     }
 
     private func hugHeight(_ n: LayoutNode, available: Size2D) throws -> Double {
         if let run = n.text {
             var r = run
             r.maxWidth = available.width - n.padding.horizontal
-            return measurer.measure(r).height + n.padding.vertical
+            return measurer.measure(r).height + n.padding.vertical + 2 * n.borderWidth
         }
         guard !n.children.isEmpty else { return 0 }
         let inner = Size2D(
-            width: available.width - n.padding.horizontal,
-            height: available.height - n.padding.vertical
+            width: available.width - n.padding.horizontal - 2 * n.borderWidth,
+            height: available.height - n.padding.vertical - 2 * n.borderWidth
         )
         let flow = n.children.filter { $0.position == .relative }
-        guard !flow.isEmpty else { return n.padding.vertical }
+        guard !flow.isEmpty else { return n.padding.vertical + 2 * n.borderWidth }
         var heights: [Double] = []
         for c in flow { heights.append(try intrinsicSize(c, available: inner).height) }
         let content: Double
@@ -125,7 +135,7 @@ public struct FlexSolver: Sendable {
         case .grid, .wrap:
             throw LayoutUnsupported.mode(n.mode, path: n.path)
         }
-        return content + n.padding.vertical
+        return content + n.padding.vertical + 2 * n.borderWidth
     }
 
     // MARK: - placement
@@ -143,11 +153,14 @@ public struct FlexSolver: Sendable {
             throw LayoutUnsupported.mode(n.mode, path: n.path)
         }
 
+        // Border-box sizing: the border sits INSIDE the frame and the content
+        // box is what is left after it and the padding.
+        let b = n.borderWidth
         let content = Rect(
-            x: rect.x + n.padding.left,
-            y: rect.y + n.padding.top,
-            width: rect.width - n.padding.horizontal,
-            height: rect.height - n.padding.vertical
+            x: rect.x + n.padding.left + b,
+            y: rect.y + n.padding.top + b,
+            width: rect.width - n.padding.horizontal - 2 * b,
+            height: rect.height - n.padding.vertical - 2 * b
         )
 
         // Out-of-flow children resolve against this box and take no part in the
@@ -271,9 +284,18 @@ public struct FlexSolver: Sendable {
                 }
             }
 
-            let r = horizontal
+            var r = horizontal
                 ? Rect(x: cursor, y: crossPos, width: mainSize, height: crossSize)
                 : Rect(x: crossPos, y: cursor, width: crossSize, height: mainSize)
+            // `ignoreSafeArea` — a full-bleed hero reaching the top of the
+            // display. The web does it with a negative top margin cancelling
+            // the host's safe-area padding, so it pulls the node up AND
+            // everything after it in the flow: a margin changes the flow, it
+            // does not merely offset the painted box.
+            if child.ignoreSafeArea && !horizontal {
+                r.y -= viewport.safeTop
+                cursor -= viewport.safeTop
+            }
             try place(child, into: r, viewport: viewport, out: &out)
             cursor += mainSize + n.gapMain
         }

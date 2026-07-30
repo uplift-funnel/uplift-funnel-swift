@@ -1,0 +1,838 @@
+{
+  "schema_version": 3,
+  "id": "interior-paywall",
+  "name": "AI Interior — paywall",
+  "description": "A faithful rebuild of a real shipped paywall, authored to prove the container model covers it. Every element here was impossible or faked in v2: a full-bleed hero bleeding under the status bar, a close button layered over it, a speech-bubble tail pointing at the selected plan, a price reading large-amount + small-period in one text node, and plan cards whose selected state is designed rather than tinted.",
+  "entry_screen_id": "paywall",
+  "default_locale": "en",
+  "locales": [
+    "en"
+  ],
+  "variables": [
+    {
+      "name": "plan",
+      "type": "string"
+    }
+  ],
+  "theme": {
+    "tokens": {
+      "colors": {
+        "primary": "#2E7D32",
+        "accent": "#2E7D32",
+        "background": "#FFFFFF",
+        "surface": "#FFFFFF",
+        "text_primary": "#111111",
+        "text_secondary": "#6B7280",
+        "border": "#D8DBDF",
+        "error": "#DC2626",
+        "success": "#2E7D32"
+      },
+      "typography": {
+        "font_family": "system",
+        "font_weight_scale": "bold"
+      },
+      "shape": {
+        "corner_radius": 14,
+        "shadow_style": "none"
+      },
+      "spacing": {
+        "unit": 4
+      }
+    }
+  },
+  "localizations": {
+    "en": {
+      "paywall.eyebrow": "WHAT'S IN",
+      "paywall.title": "AI Interior",
+      "paywall.feature_rooms": "Multiple room options",
+      "paywall.feature_limits": "Design rooms without limits",
+      "paywall.feature_styles": "More than 100 style options",
+      "paywall.social_proof": "1672 people have joined this plan today!",
+      "paywall.weekly_title": "Weekly",
+      "paywall.weekly_note": "First week €5.99",
+      "paywall.monthly_title": "Monthly",
+      "paywall.monthly_note": "Billed monthly",
+      "paywall.cta": "Continue",
+      "paywall.disclaimer": "Subscription renews automatically until cancelled. Cancel anytime in your Apple Account settings."
+    }
+  },
+  "screens": [
+    {
+      "id": "paywall",
+      "archetype": "plan_picker",
+      "name": "Paywall",
+      "root": {
+        "type": "box",
+        "name": "Screen",
+        "layout": {
+          "scroll": "vertical",
+          "alignX": "stretch"
+        },
+        "style": {
+          "fill": "background"
+        },
+        "children": [
+          {
+            "type": "box",
+            "name": "Hero",
+            "self": {
+              "width": "fill",
+              "height": 300,
+              "ignoreSafeArea": true
+            },
+            "layout": {
+              "mode": "stack",
+              "clip": true
+            },
+            "style": {
+              "fill": {
+                "kind": "image",
+                "url": "https://placehold.co/1200x900/png",
+                "fit": "cover",
+                "position": [
+                  0.5,
+                  0.45
+                ]
+              }
+            },
+            "children": [
+              {
+                "type": "box",
+                "name": "Close",
+                "self": {
+                  "position": "absolute",
+                  "inset": {
+                    "top": 12,
+                    "left": 16
+                  },
+                  "width": 32,
+                  "height": 32,
+                  "z": 2
+                },
+                "layout": {
+                  "mode": "row",
+                  "alignX": "center",
+                  "alignY": "center"
+                },
+                "style": {
+                  "fill": "#00000033",
+                  "corner": 999,
+                  "backdropBlur": 8
+                },
+                "behavior": {
+                  "tap": [
+                    "end:dismissed"
+                  ]
+                },
+                "children": [
+                  {
+                    "type": "icon",
+                    "props": {
+                      "emoji": "✕",
+                      "size": 15,
+                      "color": "#FFFFFF"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "box",
+            "name": "Body",
+            "layout": {
+              "gap": 16,
+              "padding": [
+                24,
+                20,
+                24,
+                20
+              ],
+              "alignX": "stretch"
+            },
+            "children": [
+              {
+                "type": "box",
+                "name": "Heading",
+                "layout": {
+                  "gap": 2
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "props": {
+                      "value": {
+                        "key": "paywall.eyebrow"
+                      }
+                    },
+                    "style": {
+                      "text": {
+                        "size": 15,
+                        "weight": "bold",
+                        "letterSpacing": 1.6,
+                        "color": "text_primary"
+                      }
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "props": {
+                      "value": {
+                        "key": "paywall.title"
+                      }
+                    },
+                    "style": {
+                      "text": {
+                        "size": 34,
+                        "weight": "bold",
+                        "letterSpacing": -0.6
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "box",
+                "name": "Feature card",
+                "layout": {
+                  "gap": 14,
+                  "padding": [
+                    18,
+                    18,
+                    18,
+                    18
+                  ],
+                  "alignX": "stretch"
+                },
+                "style": {
+                  "corner": 14,
+                  "stroke": {
+                    "color": "border",
+                    "width": 1
+                  }
+                },
+                "children": [
+                  {
+                    "type": "box",
+                    "layout": {
+                      "mode": "row",
+                      "gap": 12,
+                      "alignY": "center"
+                    },
+                    "children": [
+                      {
+                        "type": "icon",
+                        "props": {
+                          "emoji": "🛋️",
+                          "size": 20
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "self": {
+                          "grow": 1
+                        },
+                        "props": {
+                          "value": {
+                            "key": "paywall.feature_rooms"
+                          }
+                        },
+                        "style": {
+                          "text": {
+                            "role": "body",
+                            "size": 17
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "box",
+                    "layout": {
+                      "mode": "row",
+                      "gap": 12,
+                      "alignY": "center"
+                    },
+                    "children": [
+                      {
+                        "type": "icon",
+                        "props": {
+                          "emoji": "♾️",
+                          "size": 20
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "self": {
+                          "grow": 1
+                        },
+                        "props": {
+                          "value": {
+                            "key": "paywall.feature_limits"
+                          }
+                        },
+                        "style": {
+                          "text": {
+                            "role": "body",
+                            "size": 17
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "box",
+                    "layout": {
+                      "mode": "row",
+                      "gap": 12,
+                      "alignY": "center"
+                    },
+                    "children": [
+                      {
+                        "type": "icon",
+                        "props": {
+                          "emoji": "✨",
+                          "size": 20
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "self": {
+                          "grow": 1
+                        },
+                        "props": {
+                          "value": {
+                            "key": "paywall.feature_styles"
+                          }
+                        },
+                        "style": {
+                          "text": {
+                            "role": "body",
+                            "size": 17
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "box",
+                "name": "Social proof",
+                "self": {
+                  "width": "fill"
+                },
+                "layout": {
+                  "mode": "row",
+                  "alignX": "center",
+                  "padding": [
+                    12,
+                    16,
+                    12,
+                    16
+                  ]
+                },
+                "style": {
+                  "fill": "#E8F5E9",
+                  "corner": 10
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "props": {
+                      "value": {
+                        "key": "paywall.social_proof"
+                      },
+                      "align": "center"
+                    },
+                    "style": {
+                      "text": {
+                        "size": 15,
+                        "weight": "medium",
+                        "color": "#2E7D32"
+                      }
+                    }
+                  },
+                  {
+                    "type": "box",
+                    "name": "Tail",
+                    "self": {
+                      "position": "absolute",
+                      "inset": {
+                        "bottom": -5
+                      },
+                      "anchorX": "center",
+                      "width": 14,
+                      "height": 14,
+                      "z": 1
+                    },
+                    "style": {
+                      "fill": "#E8F5E9",
+                      "transform": {
+                        "rotate": 45
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "box",
+                "name": "Plans",
+                "bind": {
+                  "save_to": "plan"
+                },
+                "behavior": {
+                  "group": {
+                    "name": "plan"
+                  }
+                },
+                "layout": {
+                  "gap": 12,
+                  "alignX": "stretch"
+                },
+                "children": [
+                  {
+                    "type": "box",
+                    "name": "Weekly",
+                    "behavior": {
+                      "select": {
+                        "group": "plan",
+                        "value": "weekly",
+                        "title": {
+                          "key": "paywall.weekly_title"
+                        },
+                        "default": true
+                      },
+                      "product": {
+                        "ref": "ai_interior_weekly"
+                      },
+                      "animate": {
+                        "duration_ms": 160
+                      }
+                    },
+                    "layout": {
+                      "mode": "row",
+                      "gap": 12,
+                      "alignY": "center",
+                      "padding": [
+                        16,
+                        16,
+                        16,
+                        16
+                      ]
+                    },
+                    "style": {
+                      "corner": 14,
+                      "stroke": {
+                        "color": "border",
+                        "width": 1
+                      }
+                    },
+                    "states": {
+                      "selected": {
+                        "style": {
+                          "fill": "#E8F5E9",
+                          "stroke": {
+                            "color": "primary",
+                            "width": 2
+                          }
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "box",
+                        "name": "Radio",
+                        "self": {
+                          "width": 26,
+                          "height": 26
+                        },
+                        "layout": {
+                          "mode": "row",
+                          "alignX": "center",
+                          "alignY": "center"
+                        },
+                        "style": {
+                          "corner": 999,
+                          "stroke": {
+                            "color": "border",
+                            "width": 2
+                          }
+                        },
+                        "states": {
+                          "selected": {
+                            "style": {
+                              "stroke": {
+                                "color": "primary",
+                                "width": 2
+                              }
+                            }
+                          }
+                        },
+                        "children": [
+                          {
+                            "type": "box",
+                            "self": {
+                              "width": 14,
+                              "height": 14
+                            },
+                            "style": {
+                              "corner": 999
+                            },
+                            "visible": false,
+                            "states": {
+                              "selected": {
+                                "visible": true,
+                                "style": {
+                                  "fill": "primary",
+                                  "corner": 999
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "box",
+                        "self": {
+                          "grow": 1
+                        },
+                        "layout": {
+                          "gap": 1
+                        },
+                        "children": [
+                          {
+                            "type": "text",
+                            "props": {
+                              "value": {
+                                "key": "paywall.weekly_title"
+                              }
+                            },
+                            "style": {
+                              "text": {
+                                "size": 19,
+                                "weight": "bold",
+                                "color": "primary"
+                              }
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "props": {
+                              "value": {
+                                "key": "paywall.weekly_note"
+                              }
+                            },
+                            "style": {
+                              "text": {
+                                "size": 15,
+                                "color": "primary"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "props": {
+                          "spans": [
+                            {
+                              "text": "{{product.price}}",
+                              "style": {
+                                "size": 22,
+                                "weight": "bold",
+                                "color": "primary"
+                              }
+                            },
+                            {
+                              "text": " / {{product.period}}",
+                              "style": {
+                                "size": 22,
+                                "weight": "regular",
+                                "color": "primary"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "box",
+                    "name": "Monthly",
+                    "behavior": {
+                      "select": {
+                        "group": "plan",
+                        "value": "monthly",
+                        "title": {
+                          "key": "paywall.monthly_title"
+                        }
+                      },
+                      "product": {
+                        "ref": "ai_interior_monthly"
+                      },
+                      "animate": {
+                        "duration_ms": 160
+                      }
+                    },
+                    "layout": {
+                      "mode": "row",
+                      "gap": 12,
+                      "alignY": "center",
+                      "padding": [
+                        16,
+                        16,
+                        16,
+                        16
+                      ]
+                    },
+                    "style": {
+                      "corner": 14,
+                      "stroke": {
+                        "color": "border",
+                        "width": 1
+                      }
+                    },
+                    "states": {
+                      "selected": {
+                        "style": {
+                          "fill": "#E8F5E9",
+                          "stroke": {
+                            "color": "primary",
+                            "width": 2
+                          }
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "box",
+                        "name": "Radio",
+                        "self": {
+                          "width": 26,
+                          "height": 26
+                        },
+                        "layout": {
+                          "mode": "row",
+                          "alignX": "center",
+                          "alignY": "center"
+                        },
+                        "style": {
+                          "corner": 999,
+                          "stroke": {
+                            "color": "border",
+                            "width": 2
+                          }
+                        },
+                        "states": {
+                          "selected": {
+                            "style": {
+                              "stroke": {
+                                "color": "primary",
+                                "width": 2
+                              }
+                            }
+                          }
+                        },
+                        "children": [
+                          {
+                            "type": "box",
+                            "self": {
+                              "width": 14,
+                              "height": 14
+                            },
+                            "style": {
+                              "corner": 999
+                            },
+                            "visible": false,
+                            "states": {
+                              "selected": {
+                                "visible": true,
+                                "style": {
+                                  "fill": "primary",
+                                  "corner": 999
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "box",
+                        "self": {
+                          "grow": 1
+                        },
+                        "layout": {
+                          "gap": 1
+                        },
+                        "children": [
+                          {
+                            "type": "text",
+                            "props": {
+                              "value": {
+                                "key": "paywall.monthly_title"
+                              }
+                            },
+                            "style": {
+                              "text": {
+                                "size": 19,
+                                "weight": "bold"
+                              }
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "props": {
+                              "value": {
+                                "key": "paywall.monthly_note"
+                              }
+                            },
+                            "style": {
+                              "text": {
+                                "size": 15,
+                                "color": "text_secondary"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "props": {
+                          "spans": [
+                            {
+                              "text": "{{product.price}}",
+                              "style": {
+                                "size": 22,
+                                "weight": "bold",
+                                "color": "text_secondary"
+                              }
+                            },
+                            {
+                              "text": " / {{product.period}}",
+                              "style": {
+                                "size": 22,
+                                "weight": "regular",
+                                "color": "text_secondary"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "box",
+                "name": "CTA",
+                "self": {
+                  "width": "fill"
+                },
+                "layout": {
+                  "mode": "row",
+                  "alignX": "center",
+                  "alignY": "center",
+                  "gap": 8,
+                  "padding": [
+                    18,
+                    20,
+                    18,
+                    20
+                  ]
+                },
+                "style": {
+                  "fill": "primary",
+                  "corner": 12
+                },
+                "states": {
+                  "pressed": {
+                    "style": {
+                      "opacity": 0.9
+                    }
+                  }
+                },
+                "behavior": {
+                  "tap": [
+                    "purchase"
+                  ],
+                  "animate": {
+                    "duration_ms": 120
+                  }
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "props": {
+                      "value": {
+                        "key": "paywall.cta"
+                      }
+                    },
+                    "style": {
+                      "text": {
+                        "size": 19,
+                        "weight": "medium",
+                        "color": "#FFFFFF"
+                      }
+                    }
+                  },
+                  {
+                    "type": "icon",
+                    "props": {
+                      "emoji": "›",
+                      "size": 20,
+                      "color": "#FFFFFF"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "name": "Disclaimer",
+                "props": {
+                  "value": {
+                    "key": "paywall.disclaimer"
+                  },
+                  "align": "center"
+                },
+                "style": {
+                  "text": {
+                    "size": 13,
+                    "color": "text_secondary",
+                    "lineHeight": 1.35
+                  }
+                }
+              },
+              {
+                "type": "paywall_handoff",
+                "name": "Store",
+                "visible": false,
+                "props": {
+                  "provider": "revenuecat",
+                  "product_ids": [
+                    "ai_interior_weekly",
+                    "ai_interior_monthly"
+                  ],
+                  "legal": {
+                    "terms_url": "https://aiinterior.app/terms",
+                    "privacy_url": "https://aiinterior.app/privacy"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "top_bar": {
+        "back": false,
+        "close": false,
+        "progress": "none"
+      },
+      "transitions": [
+        {
+          "go": "end:completed"
+        }
+      ]
+    }
+  ]
+}

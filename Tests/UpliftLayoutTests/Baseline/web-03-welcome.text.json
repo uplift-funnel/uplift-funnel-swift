@@ -1,0 +1,55 @@
+{
+  "shot": "web-03-welcome.png",
+  "runs": [
+    {
+      "path": "0.0.0",
+      "text": "🪷",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 34,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "34px",
+      "lines": [
+        34
+      ]
+    },
+    {
+      "path": "0.1",
+      "text": "Still can't quiet your mind?",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 40,
+      "fontWeight": "700",
+      "letterSpacing": "-1px",
+      "lineHeight": "43.2px",
+      "lines": [
+        265.078125,
+        195.34375
+      ]
+    },
+    {
+      "path": "0.2",
+      "text": "50,000+ people use this to sleep better, stress less, and finally feel like themselves",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 15,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "21px",
+      "lines": [
+        322.8125,
+        242.953125
+      ]
+    },
+    {
+      "path": "1.0",
+      "text": "I'm ready",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 16,
+      "fontWeight": "500",
+      "letterSpacing": "normal",
+      "lineHeight": "23.2px",
+      "lines": [
+        69
+      ]
+    }
+  ]
+}

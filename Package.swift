@@ -38,7 +38,12 @@ let package = Package(
         .testTarget(
             name: "UpliftLayoutTests",
             dependencies: ["UpliftLayout"],
-            path: "Tests/UpliftLayoutTests"
+            path: "Tests/UpliftLayoutTests",
+            // The acceptance corpus and the frames the web renderer produced
+            // for it. Copied from funnel-platform rather than referenced,
+            // because they are in a different repository — `Scripts/sync-baseline.sh`
+            // refreshes them and `BaselineFreshnessTests` explains the risk.
+            resources: [.copy("Baseline")]
         ),
         .testTarget(
             name: "UpliftFunnelTests",

@@ -44,6 +44,15 @@ public struct LayoutNode: Sendable {
     public var z: Int?
     public var ignoreSafeArea: Bool = false
 
+    /// Border width, in points, on every edge.
+    ///
+    /// This is LAYOUT, not paint. The web renderer sets `box-sizing: border-box`
+    /// on every node, so a border eats into the content box: raising a card's
+    /// stroke from 1 to 2 moves its children in by a point and narrows them by
+    /// two. That is exactly what the paywall's `selected` delta does, which is
+    /// why a renderer that draws borders as an overlay cannot match it.
+    public var borderWidth: Double = 0
+
     // layout
     public var mode: LayoutMode = .column
     public var padding: Edges = .zero

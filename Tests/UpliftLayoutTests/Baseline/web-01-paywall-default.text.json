@@ -1,0 +1,258 @@
+{
+  "shot": "web-01-paywall-default.png",
+  "runs": [
+    {
+      "path": "0.0.0",
+      "text": "✕",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 15,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "15px",
+      "lines": [
+        11
+      ]
+    },
+    {
+      "path": "1.0.0",
+      "text": "WHAT'S IN",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 15,
+      "fontWeight": "700",
+      "letterSpacing": "1.6px",
+      "lineHeight": "21.75px",
+      "lines": [
+        94.453125
+      ]
+    },
+    {
+      "path": "1.0.1",
+      "text": "AI Interior",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 34,
+      "fontWeight": "700",
+      "letterSpacing": "-0.6px",
+      "lineHeight": "49.3px",
+      "lines": [
+        148.65625
+      ]
+    },
+    {
+      "path": "1.1.0.0",
+      "text": "🛋️",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 20,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "20px",
+      "lines": [
+        22
+      ]
+    },
+    {
+      "path": "1.1.0.1",
+      "text": "Multiple room options",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 17,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "24.65px",
+      "lines": [
+        165.109375
+      ]
+    },
+    {
+      "path": "1.1.1.0",
+      "text": "♾️",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 20,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "20px",
+      "lines": [
+        22
+      ]
+    },
+    {
+      "path": "1.1.1.1",
+      "text": "Design rooms without limits",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 17,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "24.65px",
+      "lines": [
+        210.21875
+      ]
+    },
+    {
+      "path": "1.1.2.0",
+      "text": "✨",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 20,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "20px",
+      "lines": [
+        22
+      ]
+    },
+    {
+      "path": "1.1.2.1",
+      "text": "More than 100 style options",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 17,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "24.65px",
+      "lines": [
+        210.984375
+      ]
+    },
+    {
+      "path": "1.2.0",
+      "text": "1672 people have joined this plan today!",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 15,
+      "fontWeight": "500",
+      "letterSpacing": "normal",
+      "lineHeight": "21.75px",
+      "lines": [
+        280
+      ]
+    },
+    {
+      "path": "1.3.0.1.0",
+      "text": "Weekly",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 19,
+      "fontWeight": "700",
+      "letterSpacing": "normal",
+      "lineHeight": "27.55px",
+      "lines": [
+        65.94140625
+      ]
+    },
+    {
+      "path": "1.3.0.1.1",
+      "text": "First week €5.99",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 15,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "21.75px",
+      "lines": [
+        112.517578125
+      ]
+    },
+    {
+      "path": "1.3.0.2",
+      "text": "€8.99",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 22,
+      "fontWeight": "700",
+      "letterSpacing": "normal",
+      "lineHeight": "31.9px",
+      "lines": [
+        61.431640625
+      ]
+    },
+    {
+      "path": "1.3.0.2",
+      "text": " / week",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 22,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "31.9px",
+      "lines": [
+        66.568359375
+      ]
+    },
+    {
+      "path": "1.3.1.1.0",
+      "text": "Monthly",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 19,
+      "fontWeight": "700",
+      "letterSpacing": "normal",
+      "lineHeight": "27.55px",
+      "lines": [
+        73.67578125
+      ]
+    },
+    {
+      "path": "1.3.1.1.1",
+      "text": "Billed monthly",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 15,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "21.75px",
+      "lines": [
+        96.3828125
+      ]
+    },
+    {
+      "path": "1.3.1.2",
+      "text": "€22.99",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 22,
+      "fontWeight": "700",
+      "letterSpacing": "normal",
+      "lineHeight": "31.9px",
+      "lines": [
+        74.2998046875
+      ]
+    },
+    {
+      "path": "1.3.1.2",
+      "text": " / month",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 22,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "31.9px",
+      "lines": [
+        77.7001953125
+      ]
+    },
+    {
+      "path": "1.4.0",
+      "text": "Continue",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 19,
+      "fontWeight": "500",
+      "letterSpacing": "normal",
+      "lineHeight": "27.55px",
+      "lines": [
+        78
+      ]
+    },
+    {
+      "path": "1.4.1",
+      "text": "›",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 20,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "20px",
+      "lines": [
+        8
+      ]
+    },
+    {
+      "path": "1.5",
+      "text": "Subscription renews automatically until cancelled. Cancel anytime in your Apple Account settings.",
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 13,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "17.55px",
+      "lines": [
+        351.25,
+        240.28125
+      ]
+    }
+  ]
+}
