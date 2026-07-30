@@ -13,6 +13,16 @@ import UpliftLayout
 /// the same top-down coordinates the solver works in — so the code that draws
 /// the test bitmap is the code that draws the phone, rather than a second
 /// implementation that has to be kept in step.
+public extension Color {
+    /// The layout core's colour as SwiftUI's.
+    ///
+    /// The core has its own `RGBA` because it may not import SwiftUI — it is
+    /// the file Dart and Kotlin will be ports of. This is the one adapter.
+    init(_ rgba: RGBA) {
+        self.init(.sRGB, red: rgba.r, green: rgba.g, blue: rgba.b, opacity: rgba.a)
+    }
+}
+
 public struct PrimitiveCanvas: View {
     public var list: DisplayList
     public var painter: FramePainter

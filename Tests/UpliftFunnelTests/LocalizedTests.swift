@@ -77,22 +77,8 @@ final class LocalizedTests: XCTestCase {
             "")
     }
 
-    // Markdown action-link href mapping.
-
-    func testActionForHref() {
-        XCTAssertEqual(actionForHref("restore"), "restore")
-        XCTAssertEqual(actionForHref("next"), "next")
-        XCTAssertEqual(actionForHref("go:paywall"), "go:paywall")
-        XCTAssertEqual(actionForHref("end:skipped"), "end:skipped")
-        XCTAssertEqual(actionForHref("url:https://x.com"), "url:https://x.com")
-        XCTAssertEqual(actionForHref("https://x.com"), "url:https://x.com")
-        XCTAssertEqual(actionForHref("terms"), "url:terms")
-    }
-
-    func testActionLinkRoundTrip() throws {
-        let action = "url:https://example.com/path?q=1&x=ü"
-        let url = try XCTUnwrap(ActionLink.url(for: action))
-        XCTAssertEqual(ActionLink.action(from: url), action)
-        XCTAssertNil(ActionLink.action(from: URL(string: "https://x.com")!))
-    }
+    // The markdown action-link tests that used to close this file went with
+    // Markdown.swift. v3 puts an action on a SPAN (`span.action`) rather than
+    // parsing one out of a link href, and the web renderer's own `markdownLite`
+    // is likewise no longer called from anywhere.
 }

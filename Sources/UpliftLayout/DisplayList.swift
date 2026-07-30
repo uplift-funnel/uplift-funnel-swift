@@ -122,6 +122,22 @@ public struct DisplayList: Equatable, Sendable {
 
     public func item(at path: String) -> PaintItem? { items.first { $0.path == path } }
 
+    /// The same list with some nodes' content dropped, box and all kept.
+    ///
+    /// For nodes a native control is laid over: the pill still needs its fill
+    /// and its stroke — those are the document's design — but its text belongs
+    /// to the `UITextField`, and drawing it as well would double it a fraction
+    /// of a point off.
+    public func withoutContent(at paths: Set<String>) -> DisplayList {
+        guard !paths.isEmpty else { return self }
+        return DisplayList(size: size, items: items.map { item in
+            guard paths.contains(item.path) else { return item }
+            var stripped = item
+            stripped.content = nil
+            return stripped
+        })
+    }
+
     /// The topmost node under a point, or nil.
     ///
     /// Backwards, because the last thing painted is the thing on top — the same

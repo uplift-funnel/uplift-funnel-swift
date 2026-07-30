@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UpliftLayout
 
 // Renders a live FlowSession, ported from `uplift_funnel_flow_view.dart`
 // (named UpliftFunnelSessionView on iOS; the one-shot fetch-by-key widget
@@ -39,8 +40,7 @@ public struct UpliftFunnelSessionView: View {
         let theme = PrimTheme.resolve(
             themeJson: session.flow.raw["theme"], dark: colorScheme == .dark)
         let screen = session.currentScreen
-        let backgroundColor =
-            theme.colors["background"].flatMap { parseCssColor($0) } ?? .white
+        let backgroundColor = RGBA.parse(theme.colors["background"]) ?? .white
 
         // Direction-aware slide+fade: forward pushes the new screen in from
         // the trailing edge while the old one exits toward the leading edge;
@@ -53,7 +53,7 @@ public struct UpliftFunnelSessionView: View {
                 .combined(with: .opacity))
 
         return ZStack {
-            backgroundColor.color.ignoresSafeArea()
+            Color(backgroundColor).ignoresSafeArea()
             // `showBack` is captured BY VALUE at screen entry: the outgoing
             // view keeps the chevron state it was entered with instead of
             // reacting to the shared session history flipping mid-fade (the
