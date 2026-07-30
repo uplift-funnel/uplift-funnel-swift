@@ -181,7 +181,21 @@ public enum LayoutDecoder {
             n.borderWidth = inside ? (dbl(stroke["width"]) ?? 1) : 0
         }
         n.paint = paintStyle(styleG, tokens: input.tokens)
-        n.clipsContent = (layoutG?["clip"] as? Bool) ?? (layoutG?["scroll"] != nil)
+        // Three separate facts, where this used to be one. `clip ?? (scroll !=
+        // nil)` lost the axis, and a scroller with no axis is just a box that
+        // hides everything past its edge.
+        n.clipsContent = (layoutG?["clip"] as? Bool) ?? false
+        if let axis = layoutG?["scroll"] as? String, axis != "none" {
+            n.scroll = ScrollAxis(rawValue: axis)
+        }
+        n.snap = (layoutG?["snap"] as? String).flatMap(SnapAlign.init(rawValue:))
+        // `peek` is LAYOUT, not decoration: the web writes it as padding on the
+        // scroller itself (`overflowCss`), so it changes the content box the
+        // children divide up. Trailing edge only, and horizontal only — it is
+        // the sliver of the next card you leave showing.
+        if let peek = dbl(layoutG?["peek"]), n.scroll == .horizontal {
+            n.padding.right += peek + n.gapMain
+        }
         n.text = textRun(raw, type: type, style: styleG, input: input)
 
         let props = raw["props"] as? [String: Any]

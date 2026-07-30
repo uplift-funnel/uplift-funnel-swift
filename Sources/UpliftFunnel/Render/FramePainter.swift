@@ -34,7 +34,7 @@ public struct FramePainter {
             defer { ctx.restoreGState() }
 
             for clip in item.clips {
-                ctx.addPath(path(clip))
+                ctx.addPath(path(clip.shape))
                 ctx.clip()
             }
             ctx.setAlpha(CGFloat(item.opacity))

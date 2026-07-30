@@ -26,6 +26,14 @@ public enum Align: String, Sendable {
     case start, center, end, stretch
 }
 
+public enum ScrollAxis: String, Sendable, Equatable {
+    case vertical, horizontal
+}
+
+public enum SnapAlign: String, Sendable, Equatable {
+    case none, start, center
+}
+
 public struct LayoutNode: Sendable {
     /// Dotted child indices — "1.3.0" — matching the web renderer's
     /// `data-node-path`, which is what makes a parity failure name a node.
@@ -65,9 +73,25 @@ public struct LayoutNode: Sendable {
     // once and splitting them would mean walking the document twice and hoping
     // the two walks agreed.
     public var paint: PaintStyle = .none
-    /// Whether descendants are cut to this node's shape (`layout.clip`, or a
-    /// scroller, which clips on its cross axis by definition).
+
+    /// Whether descendants are cut to this node's shape — `layout.clip`, and
+    /// ONLY that.
+    ///
+    /// It used to mean "clip, or scroll" and the two were collapsed at decode:
+    /// `clip ?? (scroll != nil)`. That threw away the axis, which is why 174pt
+    /// of the paywall — the CTA included — was cut off, invisible and
+    /// untappable, on a screen the document says scrolls.
     public var clipsContent: Bool = false
+
+    /// The axis this node scrolls on, or nil.
+    ///
+    /// A scroller clips too, but on its CROSS axis only: a vertical scroller
+    /// hides horizontal overflow and lets vertical overflow through, which is
+    /// exactly what `overflow-y: auto; overflow-x: hidden` says on the web.
+    public var scroll: ScrollAxis?
+    /// Where a scrolled child comes to rest. Carried but not yet honoured —
+    /// `scrollTargetBehavior` is iOS 17 and this package floors at 16.
+    public var snap: SnapAlign?
 
     // leaf content, for the intrinsic pass
     public var text: TextRunSpec?

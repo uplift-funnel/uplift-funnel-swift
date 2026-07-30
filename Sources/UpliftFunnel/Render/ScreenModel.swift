@@ -13,6 +13,21 @@ import UpliftLayout
 struct ScreenModel {
     var list: DisplayList
     var interactions: InteractionMap
+
+    /// The root scroller, when the screen has one and it actually overflows.
+    ///
+    /// Only the root in v1. Both fixtures put `scroll` there and nowhere else,
+    /// and a nested scroller is not a small extension: a `Canvas` cannot host a
+    /// subview, so each scroll container needs its own canvas positioned at its
+    /// solved frame. That is a coherent design and worth building against real
+    /// carousel requirements — snap, peek, paging — rather than speculatively.
+    var rootScroll: ScrollFrame?
+
+    /// Everything that scrolls with the body.
+    var scrolling: DisplayList
+    /// Everything pinned to the screen — `position: fixed`. Drawn over the
+    /// scroll view, so a footer stays put while the body moves under it.
+    var pinned: DisplayList
     /// Input nodes paired with their frames, for the native overlays. Sorted by
     /// path so the view identity is stable across rebuilds — an unordered
     /// dictionary would reshuffle the overlays and drop the keyboard mid-word.

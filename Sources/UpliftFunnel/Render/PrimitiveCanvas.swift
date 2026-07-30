@@ -26,16 +26,28 @@ public extension Color {
 public struct PrimitiveCanvas: View {
     public var list: DisplayList
     public var painter: FramePainter
+    /// The box to draw into. Usually the list's own size, but a scrolling body
+    /// draws at its CONTENT size while the pinned layer over it draws at the
+    /// viewport's — two canvases, two sizes, one display list each.
+    public var size: Size2D
+    /// Only these paths are hittable, or nil for all of them. The pinned layer
+    /// sits over the whole screen and must not swallow taps meant for the body
+    /// scrolling underneath it.
+    public var hittable: Set<String>?
     /// The node path under the tap, for whoever owns the answers.
     public var onTap: (String) -> Void
 
     public init(
         list: DisplayList,
         painter: FramePainter = FramePainter(),
+        size: Size2D? = nil,
+        hittable: Set<String>? = nil,
         onTap: @escaping (String) -> Void = { _ in }
     ) {
         self.list = list
         self.painter = painter
+        self.size = size ?? list.size
+        self.hittable = hittable
         self.onTap = onTap
     }
 
@@ -45,14 +57,20 @@ public struct PrimitiveCanvas: View {
                 painter.paint(list, into: cg)
             }
         }
-        .frame(width: list.size.width, height: list.size.height)
+        .frame(width: size.width, height: size.height)
         // Without this the canvas is only hittable where it drew something,
-        // and a tap in a card's padding would miss the card.
-        .contentShape(Rectangle())
-        // A zero-distance drag rather than `onTapGesture`, so the hit point is
-        // reported — a tap gesture gives no location.
+        // and a tap in a card's padding would miss the card. A layer that only
+        // holds pinned furniture gets the union of those frames instead, so the
+        // body scrolling underneath it still receives the drag.
+        .contentShape(HitRegion(list: list, only: hittable))
+        // A TAP recogniser, not a zero-distance drag.
+        //
+        // The drag was here because a tap gesture used to give no location.
+        // `SpatialTapGesture` does, and the distinction is not cosmetic inside
+        // a `ScrollView`: a zero-distance drag competes with the pan recogniser
+        // and either eats the scroll or fires a phantom tap when one ends.
         .gesture(
-            DragGesture(minimumDistance: 0)
+            SpatialTapGesture()
                 .onEnded { value in
                     guard let path = list.hitTest(
                         Point2D(x: value.location.x, y: value.location.y)
@@ -60,5 +78,29 @@ public struct PrimitiveCanvas: View {
                     onTap(path)
                 }
         )
+    }
+}
+
+
+/// The area a canvas answers for.
+///
+/// A full-screen rectangle for the body; for the pinned layer, only the frames
+/// it actually draws. Without the second case a footer's transparent canvas
+/// would cover the screen and absorb every scroll gesture aimed at the body
+/// behind it.
+private struct HitRegion: Shape {
+    let list: DisplayList
+    let only: Set<String>?
+
+    func path(in rect: CGRect) -> Path {
+        guard let only else { return Path(rect) }
+        var path = Path()
+        for item in list.items where only.contains(item.path) {
+            path.addRect(CGRect(
+                x: item.frame.x, y: item.frame.y,
+                width: item.frame.width, height: item.frame.height
+            ))
+        }
+        return path
     }
 }

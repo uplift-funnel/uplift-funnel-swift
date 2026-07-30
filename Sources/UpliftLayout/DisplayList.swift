@@ -25,6 +25,22 @@ public struct RoundedRect: Equatable, Sendable {
     }
 }
 
+/// A clip, and the node that imposed it.
+///
+/// The owner is carried rather than inferred. It used to be identified by
+/// searching for an item whose SHAPE matched, which worked only while a clip
+/// was always exactly its owner's frame — and a scroller's clip is its content
+/// region, which is deliberately bigger.
+public struct Clip: Equatable, Sendable {
+    public var path: String
+    public var shape: RoundedRect
+
+    public init(path: String, shape: RoundedRect) {
+        self.path = path
+        self.shape = shape
+    }
+}
+
 public enum TextAlign: String, Equatable, Sendable {
     case start, center, end
 }
@@ -50,7 +66,11 @@ public struct PaintItem: Equatable, Sendable {
     /// Carried per item rather than pushed and popped. A flat list has no
     /// ordering hazard, survives being sorted by z, and a painter that forgets
     /// to pop cannot corrupt everything after it.
-    public var clips: [RoundedRect]
+    public var clips: [Clip]
+
+    /// The nearest enclosing scroller, or nil for something pinned to the
+    /// screen. Tells a renderer which canvas an item belongs to.
+    public var scroller: String?
 
     /// Padding plus border — what separates the border box from the content
     /// box. Text is laid inside it, which is what puts an input's placeholder
@@ -74,9 +94,10 @@ public struct PaintItem: Equatable, Sendable {
         frame: Rect,
         style: PaintStyle = .none,
         content: PaintContent? = nil,
-        clips: [RoundedRect] = [],
+        clips: [Clip] = [],
         opacity: Double = 1,
-        contentInset: Edges = .zero
+        contentInset: Edges = .zero,
+        scroller: String? = nil
     ) {
         self.path = path
         self.frame = frame
@@ -85,6 +106,7 @@ public struct PaintItem: Equatable, Sendable {
         self.clips = clips
         self.opacity = opacity
         self.contentInset = contentInset
+        self.scroller = scroller
     }
 
     /// The box text and images are laid inside.
@@ -147,7 +169,7 @@ public struct DisplayList: Equatable, Sendable {
     public func hitTest(_ point: Point2D) -> String? {
         for item in items.reversed() {
             guard item.frame.contains(point) else { continue }
-            guard item.clips.allSatisfy({ $0.rect.contains(point) }) else { continue }
+            guard item.clips.allSatisfy({ $0.shape.rect.contains(point) }) else { continue }
             return item.path
         }
         return nil
@@ -184,15 +206,27 @@ public enum DisplayListBuilder {
         strict: Bool = true
     ) throws -> DisplayList {
         let byPath = Dictionary(frames.map { ($0.path, $0.rect) }) { a, _ in a }
+        // A scroller clips to what it CAN show, which is its content region and
+        // not its frame. Computing it here rather than taking it as a parameter
+        // keeps the builder's signature honest: everything it needs is derivable
+        // from the tree and its frames.
+        let scrolling = Dictionary(
+            ScrollGeometry.scrollers(root: root, frames: frames).map { ($0.path, $0) }
+        ) { a, _ in a }
         var items: [PaintItem] = []
-        try emit(root, byPath: byPath, clips: [], opacity: 1, into: &items, strict: strict)
+        try emit(
+            root, byPath: byPath, scrolling: scrolling,
+            clips: [], scroller: nil, opacity: 1, into: &items, strict: strict
+        )
         return DisplayList(size: size, items: items)
     }
 
     private static func emit(
         _ n: LayoutNode,
         byPath: [String: Rect],
-        clips: [RoundedRect],
+        scrolling: [String: ScrollFrame],
+        clips: [Clip],
+        scroller: String?,
         opacity: Double,
         into items: inout [PaintItem],
         strict: Bool
@@ -208,19 +242,26 @@ public enum DisplayListBuilder {
         }
 
         let combined = opacity * n.paint.opacity
+        // A FIXED node resolves against the screen: it escapes every ancestor's
+        // overflow clipping, and it does not scroll with them. Today a pinned
+        // footer inside a scrolling root inherits the root's clip, which no
+        // fixture happens to trip and the next authored paywall would.
+        let escapes = n.position == .fixed
+        let inheritedClips = escapes ? [] : clips
         let item = PaintItem(
             path: n.path,
             frame: frame,
             style: n.paint,
             content: content(of: n),
-            clips: clips,
+            clips: inheritedClips,
             opacity: combined,
             contentInset: Edges(
                 top: n.padding.top + n.borderWidth,
                 right: n.padding.right + n.borderWidth,
                 bottom: n.padding.bottom + n.borderWidth,
                 left: n.padding.left + n.borderWidth
-            )
+            ),
+            scroller: escapes ? nil : scroller
         )
         items.append(item)
 
@@ -228,7 +269,23 @@ public enum DisplayListBuilder {
         // Children inherit this node's clip when it clips, and its accumulated
         // alpha either way. The clip is the node's own rounded shape, so a
         // photo inside a 14pt-cornered card is cut by the card.
-        let childClips = n.clipsContent ? clips + [item.shape] : clips
+        //
+        // A SCROLLER clips to its CONTENT region instead. That one substitution
+        // is what makes hit-testing work under scroll without touching
+        // `hitTest` at all: a tap inside a real scroll container arrives in
+        // content coordinates, and the region it is tested against is now the
+        // content. Clipping it to the frame would reject every tap below the
+        // fold — which is the state the renderer is in today.
+        var childClips = inheritedClips
+        if let scrolled = scrolling[n.path] {
+            childClips.append(Clip(
+                path: n.path,
+                shape: RoundedRect(rect: scrolled.content, corners: n.paint.corners)
+            ))
+        } else if n.clipsContent {
+            childClips.append(Clip(path: n.path, shape: item.shape))
+        }
+        let childScroller = scrolling[n.path] != nil ? n.path : (escapes ? nil : scroller)
         // `z` orders siblings only. Sorting the whole tree by z would let a
         // grandchild jump out of its parent's stacking context, which no
         // renderer on any of the three platforms does.
@@ -237,8 +294,8 @@ public enum DisplayListBuilder {
             .map(\.element)
         for child in ordered {
             try emit(
-                child, byPath: byPath, clips: childClips,
-                opacity: combined, into: &items, strict: strict
+                child, byPath: byPath, scrolling: scrolling, clips: childClips,
+                scroller: childScroller, opacity: combined, into: &items, strict: strict
             )
         }
     }

@@ -62,6 +62,9 @@ struct PrimitiveScreenV3: View {
             safeTop: safeTop
         )) {
             let input = input
+            guard let tree = LayoutDecoder.layoutTree(
+                flow: flow, screenIndex: screenIndex, locale: locale, input: input
+            ) else { return nil }
             guard let list = try? ScreenRenderer().displayList(
                 flow: flow, screenIndex: screenIndex, locale: locale, input: input,
                 viewport: Viewport(
@@ -79,21 +82,54 @@ struct PrimitiveScreenV3: View {
                     return (target, item)
                 }
                 .sorted { $0.item.path < $1.item.path }
-            return ScreenModel(list: list, interactions: interactions, fields: fields)
+            // Split by which canvas an item belongs to. `scroller` was
+            // resolved when the list was built, including the CSS rule that a
+            // fixed node escapes its ancestors' overflow entirely.
+            let pinnedItems = list.items.filter { $0.scroller == nil && $0.path != "" }
+            let scrollingItems = list.items.filter { $0.scroller != nil || $0.path == "" }
+            let scrollers = ScrollGeometry.scrollers(
+                root: tree,
+                frames: list.items.map { SolvedFrame(path: $0.path, rect: $0.frame) }
+            )
+            let rootScroll = scrollers.first { $0.path == "" && $0.scrolls }
+
+            return ScreenModel(
+                list: list,
+                interactions: interactions,
+                rootScroll: rootScroll,
+                scrolling: DisplayList(
+                    size: rootScroll?.content.size ?? list.size, items: scrollingItems
+                ),
+                pinned: DisplayList(size: list.size, items: pinnedItems),
+                fields: fields
+            )
         }
     }
 
     var body: some View {
         if let model {
             ZStack(alignment: .topLeading) {
-                PrimitiveCanvas(
-                    // The fields' own text is drawn by the overlay below.
-                    list: model.list.withoutContent(at: Set(model.fields.map(\.item.path))),
-                    painter: FramePainter(images: images),
-                    onTap: { path in tap(path, with: model) }
-                )
-                ForEach(model.fields, id: \.item.path) { field in
-                    overlay(for: field.target, item: field.item)
+                if let scroll = model.rootScroll {
+                    ScrollView(scroll.axis == .vertical ? .vertical : .horizontal) {
+                        body(of: model, size: scroll.content.size)
+                    }
+                    .frame(width: size.width, height: size.height)
+                } else {
+                    body(of: model, size: Size2D(width: size.width, height: size.height))
+                }
+
+                // Over the scroll view, so a pinned footer stays put while the
+                // body moves under it. Omitted entirely when nothing is pinned
+                // — an empty canvas is still a view, and one covering the
+                // screen would take gestures from the thing behind it.
+                if !model.pinned.items.isEmpty {
+                    PrimitiveCanvas(
+                        list: model.pinned,
+                        painter: FramePainter(images: images),
+                        size: Size2D(width: size.width, height: size.height),
+                        hittable: Set(model.pinned.items.map(\.path)),
+                        onTap: { path in tap(path, with: model) }
+                    )
                 }
             }
             .frame(width: size.width, height: size.height, alignment: .topLeading)
@@ -102,6 +138,30 @@ struct PrimitiveScreenV3: View {
             // the user silently stares at.
             Color.clear.overlay(Text("layout failed").font(.footnote).foregroundColor(.secondary))
         }
+    }
+
+    /// The scrolling body: the canvas plus the native fields that ride with it.
+    ///
+    /// The fields go INSIDE the scroll content rather than over it. Their
+    /// `.position` arithmetic is unchanged, because content coordinates are the
+    /// solver's coordinates — the content origin is clamped to the scroller's
+    /// own start — so no scroll offset ever has to be applied to them. It also
+    /// means SwiftUI's own scroll-to-focus works: tap a field near the bottom
+    /// and the keyboard no longer covers it.
+    private func body(of model: ScreenModel, size: Size2D) -> some View {
+        ZStack(alignment: .topLeading) {
+            PrimitiveCanvas(
+                // The fields' own text is drawn by the overlay below.
+                list: model.scrolling.withoutContent(at: Set(model.fields.map(\.item.path))),
+                painter: FramePainter(images: images),
+                size: size,
+                onTap: { path in tap(path, with: model) }
+            )
+            ForEach(model.fields, id: \.item.path) { field in
+                overlay(for: field.target, item: field.item)
+            }
+        }
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
     }
 
     // MARK: - touch

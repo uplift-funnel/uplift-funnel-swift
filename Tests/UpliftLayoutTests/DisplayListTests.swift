@@ -73,22 +73,74 @@ final class DisplayListTests: XCTestCase {
         XCTAssertLessThan(parent, child)
     }
 
-    /// A node that clips puts its own rounded shape on its descendants.
+    /// A node that clips puts its shape on its descendants, and nobody else's.
+    ///
+    /// The owner is now carried on the clip rather than inferred by matching
+    /// shapes. That inference was only ever right while a clip equalled its
+    /// owner's frame — a scroller's clip is its CONTENT region, deliberately
+    /// bigger than the box, so the search would have found no owner at all.
     func testClippingDescends() throws {
         let l = try list("interior-paywall", screen: 0)
         let clippers = Set(l.items.filter { !$0.clips.isEmpty }.map(\.path))
         XCTAssertFalse(clippers.isEmpty, "the paywall's hero clips its photo")
         for item in l.items where !item.clips.isEmpty {
-            // Every clip an item carries belongs to one of its own ancestors.
             for clip in item.clips {
-                let owner = l.items.first { $0.shape == clip }
-                let ownerPath = try XCTUnwrap(owner?.path, "a clip belongs to no item")
                 XCTAssertTrue(
-                    item.path.hasPrefix(ownerPath),
-                    "\(item.path) is clipped by \(ownerPath), which is not an ancestor"
+                    item.path.hasPrefix(clip.path),
+                    "\(item.path) is clipped by \(clip.path), which is not an ancestor"
+                )
+                XCTAssertNotNil(
+                    l.item(at: clip.path), "\(clip.path) clips but is not in the list"
                 )
             }
         }
+    }
+
+    /// A scroller clips its children to what it can REACH, not to its frame.
+    ///
+    /// This is the substitution that makes hit-testing work under scroll
+    /// without touching `hitTest`: a tap inside a real scroll container arrives
+    /// in content coordinates, so the region it is checked against has to be
+    /// the content. Clipping to the frame rejected every tap below the fold —
+    /// 174pt of the paywall, the CTA included.
+    func testAScrollerClipsToItsContent() throws {
+        let l = try list("interior-paywall", screen: 0)
+        // Something below the fold: the CTA sits past 743.
+        let deep = try XCTUnwrap(
+            l.items.first { $0.frame.y > 743 },
+            "the paywall should overflow its viewport"
+        )
+        let rootClip = try XCTUnwrap(
+            deep.clips.first { $0.path == "" }, "the root scroller should clip it"
+        )
+        XCTAssertGreaterThan(
+            rootClip.shape.rect.height, 743,
+            "the root clipped to its frame, so everything below the fold is unhittable"
+        )
+        XCTAssertEqual(deep.scroller, "", "an item below the fold belongs to the root scroller")
+        XCTAssertNotNil(l.hitTest(Point2D(x: deep.frame.x + 5, y: deep.frame.y + 5)))
+    }
+
+    /// A fixed node escapes every ancestor's overflow clipping, as in CSS.
+    func testAFixedNodeIsNotClippedByAScroller() {
+        var root = LayoutNode(path: "", type: "box")
+        root.scroll = .vertical
+        var footer = LayoutNode(path: "0", type: "box")
+        footer.position = .fixed
+        footer.paint.fill = .flat(.black)
+        root.children = [footer]
+
+        let l = try? DisplayListBuilder.build(
+            root: root,
+            frames: [
+                SolvedFrame(path: "", rect: Rect(x: 0, y: 0, width: 390, height: 700)),
+                SolvedFrame(path: "0", rect: Rect(x: 0, y: 640, width: 390, height: 60)),
+            ],
+            size: Size2D(width: 390, height: 700)
+        )
+        let pinned = l?.item(at: "0")
+        XCTAssertEqual(pinned?.clips.count, 0, "a fixed footer inherited the scroller's clip")
+        XCTAssertNil(pinned?.scroller, "a fixed footer must not scroll with the body")
     }
 
     /// Opacity multiplies down the tree.

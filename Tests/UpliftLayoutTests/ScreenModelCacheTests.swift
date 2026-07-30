@@ -27,9 +27,13 @@ final class ScreenModelCacheTests: XCTestCase {
     }
 
     private func stub() -> ScreenModel {
-        ScreenModel(
-            list: DisplayList(size: Size2D(width: 1, height: 1), items: []),
+        let empty = DisplayList(size: Size2D(width: 1, height: 1), items: [])
+        return ScreenModel(
+            list: empty,
             interactions: InteractionMap(),
+            rootScroll: nil,
+            scrolling: empty,
+            pinned: empty,
             fields: []
         )
     }
