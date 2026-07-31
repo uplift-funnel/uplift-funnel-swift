@@ -38,6 +38,11 @@ struct PrimitiveScreenHost: View {
             // a constant here while the bar drew something else is what made
             // the body 24pt short on every screen with no back or close.
             let canGoBack = showBack ?? session.canGoBack
+            // From the WINDOW, not from `geo`. This view says
+            // `.ignoresSafeArea()` so a hero can bleed under the status bar,
+            // and a proxy inside that reports zero — which padded the chrome by
+            // nothing and put the close button in the status bar.
+            let safeTop = max(SafeArea.top, Double(geo.safeAreaInsets.top))
             let chrome = TopBarChrome.height(for: screenChrome(), canGoBack: canGoBack)
             VStack(spacing: 0) {
                 TopBarChrome(
@@ -57,9 +62,9 @@ struct PrimitiveScreenHost: View {
                     products: products,
                     size: CGSize(
                         width: geo.size.width,
-                        height: geo.size.height - chrome - geo.safeAreaInsets.top
+                        height: geo.size.height - chrome - safeTop
                     ),
-                    safeTop: geo.safeAreaInsets.top,
+                    safeTop: safeTop,
                     // Identity, not content: the flow dictionary cannot be
                     // hashed, and its id plus version moves exactly when the
                     // document does.
@@ -69,7 +74,7 @@ struct PrimitiveScreenHost: View {
                     onAction: dispatch
                 )
             }
-            .padding(.top, geo.safeAreaInsets.top)
+            .padding(.top, safeTop)
         }
         .ignoresSafeArea()
         .task { await loadImages() }
