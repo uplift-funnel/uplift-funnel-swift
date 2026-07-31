@@ -160,6 +160,32 @@ public struct DisplayList: Equatable, Sendable {
         })
     }
 
+    /// The same list moved bodily down the screen.
+    ///
+    /// For a host that has to draw ABOVE the box it was given: a node carrying
+    /// `ignoreSafeArea` is solved at a negative y, and the only way to put it on
+    /// the display is to frame the view that much higher and push everything
+    /// inside it back down by the same amount. Doing it here rather than with a
+    /// view offset keeps one set of coordinates — the frames a tap is tested
+    /// against and the frames a native overlay is positioned at are the same
+    /// frames the painter drew.
+    ///
+    /// Clips travel too. A shifted item inside an unshifted clip would be
+    /// cropped against a rectangle that is no longer where it is.
+    public func translated(dy: Double) -> DisplayList {
+        guard dy != 0 else { return self }
+        return DisplayList(size: size, items: items.map { item in
+            var moved = item
+            moved.frame.y += dy
+            moved.clips = item.clips.map { clip in
+                var c = clip
+                c.shape.rect.y += dy
+                return c
+            }
+            return moved
+        })
+    }
+
     /// The topmost node under a point, or nil.
     ///
     /// Backwards, because the last thing painted is the thing on top — the same

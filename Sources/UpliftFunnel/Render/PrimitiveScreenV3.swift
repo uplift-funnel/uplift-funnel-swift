@@ -125,9 +125,26 @@ struct PrimitiveScreenV3: View {
             let interactions = LayoutDecoder.interactions(
                 flow: flow, screenIndex: screenIndex, locale: locale, input: input
             )
+            let scrollers = ScrollGeometry.scrollers(
+                root: tree,
+                frames: list.items.map { SolvedFrame(path: $0.path, rect: $0.frame) }
+            )
+            let rootScroll = scrollers.first { $0.path == "" && $0.scrolls }
+            // How far the screen reaches above the body it was given.
+            //
+            // Read from the FRAMES rather than from the root scroller, so a
+            // screen that bleeds without scrolling — a hero on a short screen —
+            // still gets its room. It is the same number when both exist.
+            let lift = max(0, -(list.items.filter { $0.scroller != nil || $0.path == "" }
+                .map(\.frame.y).min() ?? 0))
+            // Shifted ONCE, here, so everything downstream shares one set of
+            // coordinates: the canvas paints them, `hitTest` answers in them,
+            // and the native overlays are positioned at them.
+            let shifted = list.translated(dy: lift)
+
             let fields = interactions.targets.values
                 .compactMap { target -> (target: TapTarget, item: PaintItem)? in
-                    guard target.input != nil, let item = list.item(at: target.path) else {
+                    guard target.input != nil, let item = shifted.item(at: target.path) else {
                         return nil
                     }
                     return (target, item)
@@ -136,26 +153,28 @@ struct PrimitiveScreenV3: View {
             // Split by which canvas an item belongs to. `scroller` was
             // resolved when the list was built, including the CSS rule that a
             // fixed node escapes its ancestors' overflow entirely.
-            let pinnedItems = list.items.filter { $0.scroller == nil && $0.path != "" }
-            let scrollingItems = list.items.filter { $0.scroller != nil || $0.path == "" }
-            let scrollers = ScrollGeometry.scrollers(
-                root: tree,
-                frames: list.items.map { SolvedFrame(path: $0.path, rect: $0.frame) }
-            )
-            let rootScroll = scrollers.first { $0.path == "" && $0.scrolls }
+            let pinnedItems = shifted.items.filter { $0.scroller == nil && $0.path != "" }
+            let scrollingItems = shifted.items.filter { $0.scroller != nil || $0.path == "" }
 
             return ScreenModel(
-                list: list,
+                list: shifted,
                 interactions: interactions,
                 rootScroll: rootScroll,
+                lift: lift,
                 scrolling: DisplayList(
                     size: rootScroll?.content.size ?? list.size, items: scrollingItems
                 ),
-                pinned: DisplayList(size: list.size, items: pinnedItems),
+                pinned: DisplayList(
+                    size: Size2D(width: list.size.width, height: list.size.height + lift),
+                    items: pinnedItems
+                ),
                 fields: fields
             )
         }
     }
+
+    /// The box actually drawn into: the body, plus whatever bleeds above it.
+    private var drawnHeight: Double { size.height + (model?.lift ?? 0) }
 
     var body: some View {
         if let model {
@@ -164,9 +183,14 @@ struct PrimitiveScreenV3: View {
                     ScrollView(scroll.axis == .vertical ? .vertical : .horizontal) {
                         body(of: model, size: scroll.content.size)
                     }
-                    .frame(width: size.width, height: size.height)
+                    // TALLER than the body by the lift, so the scroller's top
+                    // edge is where the lifted content starts and its bottom
+                    // edge is still the body's. Sized to the body alone, the
+                    // scroll view cropped exactly the band the hero was
+                    // reaching into, and no frame was wrong anywhere.
+                    .frame(width: size.width, height: drawnHeight)
                 } else {
-                    body(of: model, size: Size2D(width: size.width, height: size.height))
+                    body(of: model, size: Size2D(width: size.width, height: drawnHeight))
                 }
 
                 // Over the scroll view, so a pinned footer stays put while the
@@ -177,13 +201,20 @@ struct PrimitiveScreenV3: View {
                     PrimitiveCanvas(
                         list: model.pinned,
                         painter: FramePainter(images: images),
-                        size: Size2D(width: size.width, height: size.height),
+                        size: Size2D(width: size.width, height: drawnHeight),
                         hittable: Set(model.pinned.items.map(\.path)),
                         onTap: { path in tap(path, with: model) }
                     )
                 }
             }
-            .frame(width: size.width, height: size.height, alignment: .topLeading)
+            // The view REACHES UP by the lift and takes back the same amount
+            // from its layout box, so the host's stack still hands it exactly
+            // the body it computed. A negative padding rather than an offset,
+            // because an offset does not move a view's hit region out of the
+            // slot it was given and the top of a bleeding hero would not be
+            // tappable.
+            .frame(width: size.width, height: drawnHeight, alignment: .topLeading)
+            .padding(.top, -(model.lift))
             .onAppear {
                 // `duration_ms` counts from screen entry, so "when this
                 // appeared" is exactly the number wanted — and reading it here

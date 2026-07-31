@@ -23,6 +23,20 @@ struct ScreenModel {
     /// carousel requirements — snap, peek, paging — rather than speculatively.
     var rootScroll: ScrollFrame?
 
+    /// How far the screen reaches ABOVE the body box, and therefore how much
+    /// taller than that box the view has to be.
+    ///
+    /// A node carrying `ignoreSafeArea` is solved at a negative y — it is meant
+    /// to bleed under the status bar — and the body it lives in starts below the
+    /// safe area. Without this the two lists are drawn from the body's own top
+    /// edge and the lifted band is simply cropped: the hero reached the frame it
+    /// was given and none of the display it was reaching for.
+    ///
+    /// Both lists below are already translated by it, so every frame in them is
+    /// in the view's coordinates. Zero for every screen with nothing lifted, and
+    /// then this whole mechanism costs nothing.
+    var lift: Double = 0
+
     /// Everything that scrolls with the body.
     var scrolling: DisplayList
     /// Everything pinned to the screen — `position: fixed`. Drawn over the

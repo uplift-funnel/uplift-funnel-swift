@@ -53,6 +53,12 @@ struct PrimitiveScreenHost: View {
                     onClose: { session.handleAction("close", fromScreenId: screen.id) },
                     onSkip: { session.handleAction("next", fromScreenId: screen.id) }
                 )
+                // ABOVE the body, which now reaches up into this row: a screen
+                // whose hero carries `ignoreSafeArea` draws behind the chrome,
+                // and a back chevron a photo paints over is a control the user
+                // cannot find. The stack alone would put the body on top, since
+                // it comes second.
+                .zIndex(1)
                 PrimitiveScreenV3(
                     flow: primFlow.raw.flowDictionary,
                     screenIndex: session.flow.screens.firstIndex { $0.id == screen.id } ?? 0,
