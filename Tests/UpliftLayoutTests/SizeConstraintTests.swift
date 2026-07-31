@@ -153,6 +153,72 @@ final class SizeConstraintTests: XCTestCase {
         XCTAssertEqual(f["1"]?.width, 270, "the margin did not cost the filler its room")
     }
 
+    /// A stretched child is sized against the room its margins leave.
+    ///
+    /// The case the corpus could not speak for and the main-axis cases above
+    /// did not reach: `margin` on the CROSS axis. `align-items: stretch` hands
+    /// over the container's cross size minus the child's own margins, so a
+    /// NEGATIVE margin makes the child bigger — which is the whole mechanism by
+    /// which a full-bleed hero escapes its parent's padding.
+    ///
+    /// Numbers measured in Chromium, not derived: a 390pt column padded 24 each
+    /// side stretches a `margin: 0 -24px` child to x = 0, w = 390.
+    func testANegativeCrossMarginWidensAStretchedChild() throws {
+        let f = try frames([
+            "type": "box",
+            "layout": ["alignX": "stretch", "padding": [0, 24, 24, 24]],
+            "children": [
+                ["type": "box", "self": ["height": 220, "margin": [0, -24, 0, -24]]],
+                ["type": "box", "self": ["height": 40]],
+            ],
+        ])
+        XCTAssertEqual(f["0"]?.x, 0, "the bleeding child should start at the left edge")
+        XCTAssertEqual(f["0"]?.width, 390, "the negative cross margin did not widen the child")
+        // Its sibling is untouched: a margin is one child's business.
+        XCTAssertEqual(f["1"]?.x, 24)
+        XCTAssertEqual(f["1"]?.width, 342)
+    }
+
+    /// The same rule in the other direction — Chromium: x = 34, w = 322.
+    func testAPositiveCrossMarginNarrowsAStretchedChild() throws {
+        let f = try frames([
+            "type": "box",
+            "layout": ["alignX": "stretch", "padding": [0, 24, 0, 24]],
+            "children": [["type": "box", "self": ["height": 30, "margin": [0, 10, 0, 10]]]],
+        ])
+        XCTAssertEqual(f["0"]?.x, 34)
+        XCTAssertEqual(f["0"]?.width, 322)
+    }
+
+    /// An alignment shares out the space left AFTER the margins.
+    ///
+    /// Chromium centres a 100pt box carrying a 40pt right margin in a 342pt
+    /// content box at x = 125 — (342 − 40 − 100) / 2 + 24 — not at 145.
+    func testACrossMarginShiftsWhatAnAlignmentCentres() throws {
+        let f = try frames([
+            "type": "box",
+            "layout": ["alignX": "center", "padding": [0, 24, 0, 24]],
+            "children": [
+                ["type": "box", "self": ["width": 100, "height": 30, "margin": [0, 40, 0, 0]]],
+            ],
+        ])
+        XCTAssertEqual(f["0"]?.x, 125)
+        XCTAssertEqual(f["0"]?.width, 100)
+    }
+
+    /// A row's cross axis is the vertical one, and it obeys the same rule —
+    /// Chromium: y = 346, h = 96 for `margin: -8px 0` in a 100pt row padded 10.
+    func testACrossMarginOnARowIsVertical() throws {
+        let f = try frames([
+            "type": "box",
+            "self": ["height": 100],
+            "layout": ["mode": "row", "alignY": "stretch", "padding": [10, 10, 10, 10]],
+            "children": [["type": "box", "self": ["width": 50, "margin": [-8, 0, -8, 0]]]],
+        ])
+        XCTAssertEqual(f["0"]?.y, 2, "y = 10 of padding − 8 of margin")
+        XCTAssertEqual(f["0"]?.height, 96, "the negative cross margin did not heighten the child")
+    }
+
     /// `distribute: between` puts the leftover BETWEEN the children — outer
     /// edges flush, which is what `justify-content: space-between` does.
     func testDistributeBetweenSpreadsTheLeftover() throws {

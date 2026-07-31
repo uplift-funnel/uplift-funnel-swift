@@ -88,25 +88,34 @@ public enum ScrollGeometry {
         absorb(n, isScroller: true)
         for child in n.children { absorb(child, isScroller: false) }
 
-        // CLAMPED to the scroller's own start on the scrolling axis, and to its
-        // box entirely on the cross axis.
+        // EXTENDED past the scroller's own start on the scrolling axis, and
+        // clamped to its box on the cross axis.
         //
-        // Content before the block-start edge is unreachable in CSS — you
-        // cannot scroll up past the top — and the paywall has exactly that: a
-        // hero with `ignoreSafeArea` sitting at y = -51. Clamping keeps it
-        // clipped, which is what the browser does and what the recorded goldens
-        // already show. The cross axis is clamped because a vertical scroller
-        // hides horizontal overflow rather than scrolling it.
+        // A lifted node reaches BACKWARDS, and the region it reaches into is
+        // part of what scrolls. The paywall is the case: a hero with
+        // `ignoreSafeArea` sits at y = -59, and clamping the content to y = 0
+        // meant those 59 points had nowhere to be drawn — the host gave the
+        // body a box starting below the safe area and the scroller then cropped
+        // everything above its own top edge, so a full-bleed hero could not
+        // reach the top of the display however correct its frame was.
+        //
+        // Reporting the true start is what gives it somewhere to go: the
+        // content grows upward, the host frames the scroller that much higher,
+        // and the lift becomes scrollable distance rather than a crop. The
+        // cross axis stays clamped because a vertical scroller hides horizontal
+        // overflow rather than scrolling it.
         switch axis {
         case .vertical:
+            let top = min(viewport.y, minY)
             return Rect(
-                x: viewport.x, y: viewport.y,
-                width: viewport.width, height: max(viewport.height, maxY - viewport.y)
+                x: viewport.x, y: top,
+                width: viewport.width, height: max(viewport.y + viewport.height, maxY) - top
             )
         case .horizontal:
+            let left = min(viewport.x, minX)
             return Rect(
-                x: viewport.x, y: viewport.y,
-                width: max(viewport.width, maxX - viewport.x), height: viewport.height
+                x: left, y: viewport.y,
+                width: max(viewport.x + viewport.width, maxX) - left, height: viewport.height
             )
         }
     }

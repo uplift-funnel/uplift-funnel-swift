@@ -460,11 +460,24 @@ final class LayoutPass {
             // default and what css.ts emits when the author said nothing. It is
             // why a column's children are as wide as the column without asking.
             let crossAlign = (horizontal ? n.alignY : n.alignX) ?? .stretch
+            // MARGIN comes out of the cross axis as well as the main one.
+            // `align-items: stretch` gives the child the container's cross size
+            // MINUS its own margins, so a negative margin makes it BIGGER —
+            // which is how a full-bleed hero escapes its parent's padding.
+            //
+            // Only the main axis was accounted for, and the paywall shows what
+            // that costs: a 220pt hero with `margin: [0, -24, 0, -24]` in a
+            // 342pt column was moved to x = 0 correctly and then left 342 wide,
+            // so it stopped 48pt short of the right edge of a screen it is
+            // supposed to bleed across. Measured in Chromium: 390, and 322 for
+            // the same box with `margin: 0 10px`.
+            let crossMargin = horizontal ? child.margin.vertical : child.margin.horizontal
+            let crossAvailable = crossExtent - crossMargin
             let intrinsicCross = try intrinsicSize(
                 child,
                 available: Size2D(
-                    width: horizontal ? mainSize : crossExtent,
-                    height: horizontal ? crossExtent : mainSize
+                    width: horizontal ? mainSize : crossAvailable,
+                    height: horizontal ? crossAvailable : mainSize
                 )
             )
             let childCrossWanted = horizontal ? intrinsicCross.height : intrinsicCross.width
@@ -475,7 +488,7 @@ final class LayoutPass {
 
             var crossSize: Double
             if crossFill || (crossAlign == .stretch && !explicitCross) {
-                crossSize = crossExtent
+                crossSize = crossAvailable
             } else {
                 crossSize = childCrossWanted
             }
@@ -489,10 +502,14 @@ final class LayoutPass {
                 : clamp(crossSize, child.minWidth, child.maxWidth)
             var crossPos = (horizontal ? content.y : content.x)
                 + (horizontal ? child.margin.top : child.margin.left)
-            if crossSize < crossExtent {
+            // The free space an alignment shares out is what is left AFTER the
+            // margins, which is why `crossAvailable` and not `crossExtent`
+            // appears here too: Chromium centres a 100pt box with a 40pt right
+            // margin in a 342pt column at x = 125, not 145.
+            if crossSize < crossAvailable {
                 switch crossAlign {
-                case .center: crossPos += lu((crossExtent - crossSize) / 2)
-                case .end: crossPos += crossExtent - crossSize
+                case .center: crossPos += lu((crossAvailable - crossSize) / 2)
+                case .end: crossPos += crossAvailable - crossSize
                 case .start, .stretch: break
                 }
             }
