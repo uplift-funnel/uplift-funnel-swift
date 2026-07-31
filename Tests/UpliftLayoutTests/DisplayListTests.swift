@@ -318,6 +318,45 @@ final class DisplayListTests: XCTestCase {
         XCTAssertEqual(strokeColour(touched), error, "a touched, empty field should redden")
     }
 
+    // MARK: - translation
+
+    /// A translated list is the same drawing, lower down — clips included.
+    ///
+    /// The host shifts the whole screen when something bleeds above the body,
+    /// and it shifts BOTH lists by the same amount inside a view raised by the
+    /// same amount. So a pinned footer, which resolves against the screen and
+    /// must not move, is translated too and lands exactly where it did. No
+    /// fixture pairs a `fixed` node with a lifted one, so the invariant is
+    /// asserted here rather than left to the arithmetic.
+    ///
+    /// The clip travels with the item. A shifted box inside an unshifted clip
+    /// would be cropped against a rectangle no longer around it — and a hero is
+    /// exactly that case, since the box that clips it is the one being moved.
+    func testTranslatingMovesFramesAndClipsTogether() {
+        let clip = Clip(
+            path: "0", shape: RoundedRect(rect: Rect(x: 0, y: -59, width: 390, height: 220),
+                                          corners: .none)
+        )
+        let list = DisplayList(size: Size2D(width: 390, height: 700), items: [
+            PaintItem(path: "0", frame: Rect(x: 0, y: -59, width: 390, height: 220), clips: [clip]),
+            PaintItem(path: "1", frame: Rect(x: 0, y: 640, width: 390, height: 60)),
+        ])
+
+        let moved = list.translated(dy: 59)
+        XCTAssertEqual(moved.item(at: "0")?.frame.y, 0, "the lifted item should reach the top")
+        XCTAssertEqual(moved.item(at: "0")?.clips.first?.shape.rect.y, 0, "the clip stayed behind")
+        XCTAssertEqual(moved.item(at: "1")?.frame.y, 699, "everything moves by the same amount")
+        // Untouched on the other axis, and a no-op for a screen with no lift.
+        XCTAssertEqual(moved.item(at: "1")?.frame.x, 0)
+        XCTAssertEqual(list.translated(dy: 0), list)
+
+        // The hit test follows the paint. y = 200 is inside the hero once it
+        // has been moved down (0..220) and past its bottom edge before (161),
+        // so this discriminates rather than merely agreeing.
+        XCTAssertEqual(moved.hitTest(Point2D(x: 10, y: 200)), "0")
+        XCTAssertNil(list.hitTest(Point2D(x: 10, y: 200)))
+    }
+
     // MARK: - the whole corpus
 
     /// Every shot builds, and every item lands inside the screen.
