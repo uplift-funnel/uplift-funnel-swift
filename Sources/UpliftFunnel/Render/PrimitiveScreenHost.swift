@@ -1,11 +1,10 @@
 import Foundation
 import SwiftUI
+import UpliftLayout
 
-// Bridges a live FlowSession to the standalone PrimitiveScreenView renderer,
-// ported from `primitive_screen_host.dart`. Turns session state (current
-// screen id, variables) into the (PrimFlow, screenIndex, locale, vars,
-// selections) shape the renderer expects, and wires `onAction`/`onSave`
-// back into the session — plus the purchase-analytics bridge.
+// Bridges a live FlowSession to the v3 screen renderer. Turns session state
+// (current screen id, variables) into the shape the renderer expects, and wires
+// taps back into the session — plus the purchase-analytics bridge.
 
 struct PrimitiveScreenHost: View {
     let screen: FunnelScreen
@@ -28,91 +27,231 @@ struct PrimitiveScreenHost: View {
     var onRestore: (() async -> Bool)?
     var reduceMotion = false
 
+    /// Store data for the `{{product.*}}` tokens, published by the host.
+    var products: [String: [String: String]] = [:]
+
+    @State private var images: [String: CGImage] = [:]
+
     var body: some View {
-        let flow = session.flow
-        let screenIndex = flow.screens.firstIndex { $0.id == screen.id } ?? 0
-        let locale = resolveLocale(
-            locales: primFlow.locales, defaultLocale: primFlow.defaultLocale)
-        let vars = stringifyVariables(session.variables)
-
-        PrimitiveScreenView(
-            flow: primFlow,
-            theme: theme,
-            screenIndex: screenIndex,
-            locale: locale,
-            vars: vars,
-            selections: vars,
-            canGoBack: showBack ?? session.canGoBack,
-            // Stamped with the screen that raised it, so a timer firing after
-            // the user has moved on is dropped rather than skipping a screen.
-            onAction: { session.handleAction($0, fromScreenId: screen.id) },
-            // A JSON-array string coming back from the renderer is a
-            // multi-select value — store the real array so transition
-            // conditions (`contains`) and analytics see an array_string,
-            // not a serialized blob.
-            onSave: { saveTo, value in
-                session.setVariable(saveTo, decodeValue(value))
-            },
-            // Typing/dragging path: same state write, no analytics event —
-            // the final value flushes as ONE variable_set on navigation or
-            // editing end.
-            onSaveLocal: { saveTo, value in
-                session.setVariableLocal(saveTo, decodeValue(value))
-            },
-            // Editing-end commit: apply the final value, then flush only
-            // this name's pending event (no-op if a navigation flush got
-            // there first).
-            onSaveCommit: { saveTo, value in
-                session.setVariableLocal(saveTo, decodeValue(value))
-                session.commitVariable(saveTo)
-            },
-            onSignIn: onSignIn,
-            onPermission: onPermission,
-            onPhotoUpload: onPhotoUpload,
-            // Nil stays nil: the renderer's no-handler behavior (purchase
-            // just advances — preview/unwired mode) must not produce
-            // analytics events.
-            onPurchase: onPurchase == nil ? nil : handlePurchase,
-            onRestore: onRestore,
-            reduceMotion: reduceMotion)
-    }
-
-    private func handlePurchase(_ planId: String?) async -> Bool {
-        await performPurchaseBridge(
-            session: session, screenId: screen.id,
-            plan: findPlan(planId), planId: planId,
-            handler: onPurchase!)
-    }
-
-    /// Raw plan JSON with `planId` from the current screen's first
-    /// `plan_picker`, falling back to the highlighted (else lone) plan when
-    /// nothing was picked yet — single-plan paywalls have no selection step.
-    private func findPlan(_ planId: String?) -> JSONValue? {
-        guard let root = primFlow.screens.first(where: { $0.id == screen.id })?.root,
-              let picker = findPlanPicker(root) else {
-            return nil
-        }
-        let plans = (picker.props["plans"].arrayValue ?? [])
-            .filter { $0.objectValue != nil }
-        if plans.isEmpty { return nil }
-        guard let planId else {
-            // Mirror the renderer's visual default when nothing was tapped:
-            // the highlighted plan (cards/toggle preselect it), else a lone
-            // plan.
-            if let highlighted = plans.first(where: { $0["highlighted"].boolValue == true }) {
-                return highlighted
+        GeometryReader { geo in
+            // ONE answer, used for both the bar and the box below it. Reading
+            // a constant here while the bar drew something else is what made
+            // the body 24pt short on every screen with no back or close.
+            let canGoBack = showBack ?? session.canGoBack
+            // From the WINDOW, not from `geo`. This view says
+            // `.ignoresSafeArea()` so a hero can bleed under the status bar,
+            // and a proxy inside that reports zero — which padded the chrome by
+            // nothing and put the close button in the status bar.
+            let safeTop = max(SafeArea.top, Double(geo.safeAreaInsets.top))
+            let chrome = TopBarChrome.height(for: screenChrome(), canGoBack: canGoBack)
+            VStack(spacing: 0) {
+                TopBarChrome(
+                    topBar: screenChrome(),
+                    palette: theme.colors,
+                    canGoBack: canGoBack,
+                    onBack: { session.goBack() },
+                    onClose: { session.handleAction("close", fromScreenId: screen.id) },
+                    onSkip: { session.handleAction("next", fromScreenId: screen.id) }
+                )
+                // ABOVE the body, which now reaches up into this row: a screen
+                // whose hero carries `ignoreSafeArea` draws behind the chrome,
+                // and a back chevron a photo paints over is a control the user
+                // cannot find. The stack alone would put the body on top, since
+                // it comes second.
+                .zIndex(1)
+                PrimitiveScreenV3(
+                    flow: primFlow.raw.flowDictionary,
+                    screenIndex: session.flow.screens.firstIndex { $0.id == screen.id } ?? 0,
+                    locale: resolveLocale(
+                        locales: primFlow.locales, defaultLocale: primFlow.defaultLocale
+                    ),
+                    products: products,
+                    size: CGSize(
+                        width: geo.size.width,
+                        height: geo.size.height - chrome - safeTop
+                    ),
+                    safeTop: safeTop,
+                    // Identity, not content: the flow dictionary cannot be
+                    // hashed, and its id plus version moves exactly when the
+                    // document does.
+                    flowVersion: "\(session.flow.id)@\(primFlow.raw["version"].stringifiedValue ?? "0")",
+                    answers: answers,
+                    images: images,
+                    onAction: dispatch
+                )
             }
-            return plans.count == 1 ? plans[0] : nil
+            .padding(.top, safeTop)
         }
-        return plans.first { $0["id"].stringifiedValue == planId }
+        .ignoresSafeArea()
+        .task { await loadImages() }
     }
 
-    private func findPlanPicker(_ node: PrimNode) -> PrimNode? {
-        if node.type == "plan_picker" { return node }
-        for child in node.children {
-            if let found = findPlanPicker(child) { return found }
+    /// Session variables as the renderer's flat strings, and back again.
+    ///
+    /// A Binding rather than a copy because the renderer OWNS the edit: a
+    /// keystroke has to reach the session immediately or `enabled_when` gating
+    /// and validation both lag a character behind.
+    private var answers: Binding<[String: String]> {
+        Binding(
+            get: { stringifyVariables(session.variables) },
+            set: { next in
+                let current = stringifyVariables(session.variables)
+                // Only what actually changed — writing every key on every
+                // keystroke would emit a variable_set per key per character.
+                for (key, value) in next where current[key] != value {
+                    session.setVariableLocal(key, decodeValue(value))
+                }
+            }
+        )
+    }
+
+    /// The screen's `top_bar`, straight from the document.
+    private func screenChrome() -> [String: Any]? {
+        let doc = primFlow.raw.flowDictionary
+        let index = session.flow.screens.firstIndex { $0.id == screen.id } ?? 0
+        guard let screens = doc["screens"] as? [[String: Any]],
+              screens.indices.contains(index) else { return nil }
+        return screens[index]["top_bar"] as? [String: Any]
+    }
+
+    // MARK: - actions
+
+    private func dispatch(_ action: String) {
+        switch action {
+        case "purchase":
+            Task { await purchase() }
+        case "restore":
+            Task { await restore() }
+        default:
+            if action.hasPrefix("permission:") {
+                let type = String(action.dropFirst("permission:".count))
+                Task {
+                    _ = await onPermission?(type)
+                    session.handleAction("next", fromScreenId: screen.id)
+                }
+                return
+            }
+            // Any pending keystrokes become one committed value before the
+            // screen changes, which is what keeps a typed answer from being
+            // recorded twice or not at all.
+            session.flushPendingVariableSets()
+            session.handleAction(action, fromScreenId: screen.id)
         }
-        return nil
+    }
+
+    private func purchase() async {
+        guard let onPurchase else {
+            session.handleAction("next", fromScreenId: screen.id)
+            return
+        }
+        let planId = selectedProductRef()
+        let ok = await performPurchaseBridge(
+            session: session, screenId: screen.id,
+            plan: planId.map { .string($0) }, planId: planId,
+            handler: onPurchase
+        )
+        if ok { session.handleAction("next", fromScreenId: screen.id) }
+    }
+
+    private func restore() async {
+        guard let onRestore else { return }
+        if await onRestore() { session.handleAction("next", fromScreenId: screen.id) }
+    }
+
+    /// Which product the user is buying.
+    ///
+    /// v3 has no `plan_picker` node — a paywall is composed boxes, each bound
+    /// to a product by `behavior.product.ref` and selected through a group. So
+    /// the answer is: find the selected option, and read the product ref off
+    /// the node that carries it. Falls back to the option marked `default`,
+    /// because a single-plan paywall has no selection step and must still be
+    /// buyable.
+    private func selectedProductRef() -> String? {
+        let doc = primFlow.raw.flowDictionary
+        let index = session.flow.screens.firstIndex { $0.id == screen.id } ?? 0
+        guard let screens = doc["screens"] as? [[String: Any]],
+              screens.indices.contains(index),
+              let root = screens[index]["root"] as? [String: Any] else { return nil }
+        let answers = stringifyVariables(session.variables)
+
+        var fallback: String?
+        var found: String?
+        func walk(_ node: [String: Any]) {
+            let behavior = node["behavior"] as? [String: Any]
+            if let ref = (behavior?["product"] as? [String: Any])?["ref"] as? String {
+                if let s = behavior?["select"] as? [String: Any],
+                   let group = s["group"] as? String, let value = s["value"] as? String {
+                    if answers[group] == value { found = found ?? ref }
+                    if (s["default"] as? Bool) == true { fallback = fallback ?? ref }
+                } else {
+                    fallback = fallback ?? ref
+                }
+            }
+            for child in (node["children"] as? [[String: Any]]) ?? [] { walk(child) }
+        }
+        walk(root)
+        return found ?? fallback
+    }
+
+    // MARK: - images
+
+    /// Fetch every image the screen names, before it is drawn.
+    ///
+    /// The painter never blocks — a missing image draws its placeholder and the
+    /// frame is still right — so this is a refinement rather than a gate, and a
+    /// screen with a slow photo appears immediately with everything else in
+    /// place.
+    private func loadImages() async {
+        let doc = primFlow.raw.flowDictionary
+        let index = session.flow.screens.firstIndex { $0.id == screen.id } ?? 0
+        guard let screens = doc["screens"] as? [[String: Any]],
+              screens.indices.contains(index),
+              let root = screens[index]["root"] as? [String: Any] else { return }
+
+        var urls: Set<String> = []
+        func walk(_ node: [String: Any]) {
+            if let url = (node["props"] as? [String: Any])?["url"] as? String, !url.isEmpty {
+                urls.insert(url)
+            }
+            if let fill = (node["style"] as? [String: Any])?["fill"] as? [String: Any],
+               let url = fill["url"] as? String, !url.isEmpty {
+                urls.insert(url)
+            }
+            for child in (node["children"] as? [[String: Any]]) ?? [] { walk(child) }
+        }
+        walk(root)
+
+        // Fetched CONCURRENTLY and applied in ONE assignment.
+        //
+        // Both halves matter. Assigning per image meant N writes to `@State`,
+        // and every write re-ran the view — so a screen with four photos laid
+        // itself out four extra times, after it was already on screen and
+        // already correct. That was the visible stutter on first appearance.
+        // Serial fetches then made it N round-trips deep as well.
+        //
+        // The model cache is what makes the single assignment nearly free:
+        // images are not part of its key, so this repaints without re-solving.
+        let wanted = urls.filter { images[$0] == nil }
+        guard !wanted.isEmpty else { return }
+        let fetched = await withTaskGroup(of: (String, CGImage?).self) { group in
+            for url in wanted {
+                group.addTask {
+                    guard let link = URL(string: url),
+                          let (data, _) = try? await URLSession.shared.data(from: link),
+                          let source = CGImageSourceCreateWithData(data as CFData, nil),
+                          let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+                    else { return (url, nil) }
+                    return (url, image)
+                }
+            }
+            var out: [String: CGImage] = [:]
+            for await (url, image) in group {
+                if let image { out[url] = image }
+            }
+            return out
+        }
+        guard !fetched.isEmpty else { return }
+        images.merge(fetched) { _, new in new }
     }
 
     /// Device locale if the flow declares it, else the flow's default.

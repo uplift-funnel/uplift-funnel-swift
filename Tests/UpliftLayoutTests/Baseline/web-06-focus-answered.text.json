@@ -1,0 +1,179 @@
+{
+  "shot": "web-06-focus-answered.png",
+  "runs": [
+    {
+      "path": "0",
+      "text": "Nice to meet you, Alex. What's hitting you hardest?",
+      "maxContent": 674.109375,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 30,
+      "fontWeight": "700",
+      "letterSpacing": "-0.6px",
+      "lineHeight": "34.5px",
+      "lines": [
+        305.25,
+        249.53125,
+        119.375
+      ]
+    },
+    {
+      "path": "1.0.0",
+      "text": "🥱",
+      "maxContent": 21,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 18,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "18px",
+      "lines": [
+        21
+      ]
+    },
+    {
+      "path": "1.0.1.0",
+      "text": "Sleep problems",
+      "maxContent": 115.40625,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 16,
+      "fontWeight": "500",
+      "letterSpacing": "normal",
+      "lineHeight": "23.2px",
+      "lines": [
+        115.40625
+      ]
+    },
+    {
+      "path": "1.0.1.1",
+      "text": "Takes forever to fall asleep, or you wake up at 3am",
+      "maxContent": 305.390625,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 13,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "18.85px",
+      "lines": [
+        263.671875,
+        41.734375
+      ]
+    },
+    {
+      "path": "1.1.0",
+      "text": "😰",
+      "maxContent": 21,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 18,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "18px",
+      "lines": [
+        21
+      ]
+    },
+    {
+      "path": "1.1.1.0",
+      "text": "Constant anxiety",
+      "maxContent": 125.25,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 16,
+      "fontWeight": "500",
+      "letterSpacing": "normal",
+      "lineHeight": "23.2px",
+      "lines": [
+        125.25
+      ]
+    },
+    {
+      "path": "1.1.1.1",
+      "text": "Low-level dread that never really turns off",
+      "maxContent": 252.84375,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 13,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "18.85px",
+      "lines": [
+        252.84375
+      ]
+    },
+    {
+      "path": "1.2.0",
+      "text": "🪫",
+      "maxContent": 21,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 18,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "18px",
+      "lines": [
+        21
+      ]
+    },
+    {
+      "path": "1.2.1.0",
+      "text": "Complete burnout",
+      "maxContent": 134.578125,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 16,
+      "fontWeight": "500",
+      "letterSpacing": "normal",
+      "lineHeight": "23.2px",
+      "lines": [
+        134.578125
+      ]
+    },
+    {
+      "path": "1.2.1.1",
+      "text": "Running on empty — nothing feels enjoyable anymore",
+      "maxContent": 323.625,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 13,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "18.85px",
+      "lines": [
+        271.4375,
+        52.21875
+      ]
+    },
+    {
+      "path": "2.0",
+      "text": "🌙",
+      "maxContent": 20,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "16px",
+      "lines": [
+        20
+      ]
+    },
+    {
+      "path": "2.1",
+      "text": "Most people with this see a shift in the first two weeks.",
+      "maxContent": 331.203125,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 13,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "18.85px",
+      "lines": [
+        289.53125,
+        41.6875
+      ]
+    },
+    {
+      "path": "3.0",
+      "text": "Continue",
+      "maxContent": 66.953125,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 16,
+      "fontWeight": "500",
+      "letterSpacing": "normal",
+      "lineHeight": "23.2px",
+      "lines": [
+        67
+      ]
+    }
+  ]
+}

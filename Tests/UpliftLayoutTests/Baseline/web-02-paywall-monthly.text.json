@@ -1,0 +1,279 @@
+{
+  "shot": "web-02-paywall-monthly.png",
+  "runs": [
+    {
+      "path": "0.0.0",
+      "text": "✕",
+      "maxContent": 11.4375,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 15,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "15px",
+      "lines": [
+        11
+      ]
+    },
+    {
+      "path": "1.0.0",
+      "text": "WHAT'S IN",
+      "maxContent": 94.453125,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 15,
+      "fontWeight": "700",
+      "letterSpacing": "1.6px",
+      "lineHeight": "21.75px",
+      "lines": [
+        94.453125
+      ]
+    },
+    {
+      "path": "1.0.1",
+      "text": "AI Interior",
+      "maxContent": 148.65625,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 34,
+      "fontWeight": "700",
+      "letterSpacing": "-0.6px",
+      "lineHeight": "49.3px",
+      "lines": [
+        148.65625
+      ]
+    },
+    {
+      "path": "1.1.0.0",
+      "text": "🛋️",
+      "maxContent": 22,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 20,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "20px",
+      "lines": [
+        22
+      ]
+    },
+    {
+      "path": "1.1.0.1",
+      "text": "Multiple room options",
+      "maxContent": 165.109375,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 17,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "24.65px",
+      "lines": [
+        165.109375
+      ]
+    },
+    {
+      "path": "1.1.1.0",
+      "text": "♾️",
+      "maxContent": 22,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 20,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "20px",
+      "lines": [
+        22
+      ]
+    },
+    {
+      "path": "1.1.1.1",
+      "text": "Design rooms without limits",
+      "maxContent": 210.21875,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 17,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "24.65px",
+      "lines": [
+        210.21875
+      ]
+    },
+    {
+      "path": "1.1.2.0",
+      "text": "✨",
+      "maxContent": 22,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 20,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "20px",
+      "lines": [
+        22
+      ]
+    },
+    {
+      "path": "1.1.2.1",
+      "text": "More than 100 style options",
+      "maxContent": 210.984375,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 17,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "24.65px",
+      "lines": [
+        210.984375
+      ]
+    },
+    {
+      "path": "1.2.0",
+      "text": "1672 people have joined this plan today!",
+      "maxContent": 280.21875,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 15,
+      "fontWeight": "500",
+      "letterSpacing": "normal",
+      "lineHeight": "21.75px",
+      "lines": [
+        280
+      ]
+    },
+    {
+      "path": "1.3.0.1.0",
+      "text": "Weekly",
+      "maxContent": 66.078125,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 19,
+      "fontWeight": "700",
+      "letterSpacing": "normal",
+      "lineHeight": "27.55px",
+      "lines": [
+        66.2978515625
+      ]
+    },
+    {
+      "path": "1.3.0.1.1",
+      "text": "First week €5.99",
+      "maxContent": 113.5625,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 15,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "21.75px",
+      "lines": [
+        113.939453125
+      ]
+    },
+    {
+      "path": "1.3.0.2",
+      "text": "€8.99",
+      "maxContent": 63.03125,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 22,
+      "fontWeight": "700",
+      "letterSpacing": "normal",
+      "lineHeight": "31.9px",
+      "lines": [
+        62.810546875
+      ]
+    },
+    {
+      "path": "1.3.0.2",
+      "text": " / week",
+      "maxContent": 66.421875,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 22,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "31.9px",
+      "lines": [
+        66.189453125
+      ]
+    },
+    {
+      "path": "1.3.1.1.0",
+      "text": "Monthly",
+      "maxContent": 73.96875,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 19,
+      "fontWeight": "700",
+      "letterSpacing": "normal",
+      "lineHeight": "27.55px",
+      "lines": [
+        74.1669921875
+      ]
+    },
+    {
+      "path": "1.3.1.1.1",
+      "text": "Billed monthly",
+      "maxContent": 96.765625,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 15,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "21.75px",
+      "lines": [
+        97.025390625
+      ]
+    },
+    {
+      "path": "1.3.1.2",
+      "text": "€22.99",
+      "maxContent": 75.828125,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 22,
+      "fontWeight": "700",
+      "letterSpacing": "normal",
+      "lineHeight": "31.9px",
+      "lines": [
+        75.681640625
+      ]
+    },
+    {
+      "path": "1.3.1.2",
+      "text": " / month",
+      "maxContent": 77.46875,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 22,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "31.9px",
+      "lines": [
+        77.318359375
+      ]
+    },
+    {
+      "path": "1.4.0",
+      "text": "Continue",
+      "maxContent": 78.203125,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 19,
+      "fontWeight": "500",
+      "letterSpacing": "normal",
+      "lineHeight": "27.55px",
+      "lines": [
+        78
+      ]
+    },
+    {
+      "path": "1.4.1",
+      "text": "›",
+      "maxContent": 8.265625,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 20,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "20px",
+      "lines": [
+        8
+      ]
+    },
+    {
+      "path": "1.5",
+      "text": "Subscription renews automatically until cancelled. Cancel anytime in your Apple Account settings.",
+      "maxContent": 591.5,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 13,
+      "fontWeight": "400",
+      "letterSpacing": "normal",
+      "lineHeight": "17.55px",
+      "lines": [
+        351.25,
+        240.28125
+      ]
+    }
+  ]
+}

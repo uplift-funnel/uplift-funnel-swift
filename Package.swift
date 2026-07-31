@@ -4,10 +4,14 @@ import PackageDescription
 let package = Package(
     name: "UpliftFunnel",
     platforms: [
-        .iOS(.v15),
+        // iOS 16 rather than 15. `ImageRenderer`, which the paint goldens need,
+        // is 16+, and so is the `Layout` protocol the painter uses to place
+        // children at solved rects. iOS 16 shipped in 2022; the layout engine
+        // itself is in `UpliftLayout` and has no OS floor at all.
+        .iOS(.v16),
         // macOS is included only so `swift build` / `swift test` run from the CLI;
         // UIKit-only code is gated behind `#if canImport(UIKit)`.
-        .macOS(.v12),
+        .macOS(.v13),
     ],
     products: [
         .library(
@@ -16,9 +20,38 @@ let package = Package(
         ),
     ],
     targets: [
+        // The layout engine, deliberately dependency-free and framework-free.
+        // It must not import SwiftUI, UIKit, AppKit or CoreText: layout is a
+        // pure function from (node tree, viewport, text metrics) to frames, so
+        // it can be unit-tested without a view hierarchy and ported verbatim to
+        // Dart and Kotlin. `PurityTests` enforces the boundary, because SwiftPM
+        // will not.
+        .target(
+            name: "UpliftLayout",
+            path: "Sources/UpliftLayout"
+        ),
         .target(
             name: "UpliftFunnel",
+            dependencies: ["UpliftLayout"],
             path: "Sources/UpliftFunnel"
+        ),
+        .testTarget(
+            name: "UpliftLayoutTests",
+            // Also depends on UpliftFunnel, because the CoreText measurer lives
+            // there — the layout target may not import a text framework — and
+            // it is asserted against the same recorded baseline as the solver.
+            dependencies: ["UpliftLayout", "UpliftFunnel"],
+            path: "Tests/UpliftLayoutTests",
+            // The acceptance corpus and the frames the web renderer produced
+            // for it. Copied from funnel-platform rather than referenced,
+            // because they are in a different repository — `Scripts/sync-baseline.sh`
+            // refreshes them and `BaselineFreshnessTests` explains the risk.
+            resources: [
+                .copy("Baseline"),
+                // Paint goldens are OURS, unlike Baseline — see
+                // `PaintGoldenTests` for why they are not the web's PNGs.
+                .copy("PaintGoldens"),
+            ]
         ),
         .testTarget(
             name: "UpliftFunnelTests",

@@ -1,0 +1,32 @@
+{
+  "shot": "web-07-name-invalid.png",
+  "runs": [
+    {
+      "path": "1",
+      "text": "First, what should we call you?",
+      "maxContent": 403.921875,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 30,
+      "fontWeight": "700",
+      "letterSpacing": "-0.6px",
+      "lineHeight": "34.5px",
+      "lines": [
+        338.640625,
+        65.296875
+      ]
+    },
+    {
+      "path": "3.0",
+      "text": "Continue",
+      "maxContent": 66.953125,
+      "fontFamily": "system-ui, -apple-system, sans-serif",
+      "fontSize": 16,
+      "fontWeight": "500",
+      "letterSpacing": "normal",
+      "lineHeight": "23.2px",
+      "lines": [
+        67
+      ]
+    }
+  ]
+}

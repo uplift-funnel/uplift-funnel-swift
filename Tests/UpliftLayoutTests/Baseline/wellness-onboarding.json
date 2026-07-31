@@ -1,0 +1,932 @@
+{
+  "schema_version": 3,
+  "id": "wellness-onboarding",
+  "name": "Wellness \u2014 onboarding",
+  "description": "The other half of the model: a selection group whose options are ordinary designed boxes, a text input feeding a personalized headline, a footer pinned while content scrolls, conditional visibility inside a screen, and a shared progress indicator whose steps carry their own completed/current/upcoming design.",
+  "entry_screen_id": "welcome",
+  "default_locale": "en",
+  "locales": [
+    "en"
+  ],
+  "variables": [
+    {
+      "name": "first_name",
+      "type": "string"
+    },
+    {
+      "name": "focus",
+      "type": "string"
+    },
+    {
+      "name": "experience",
+      "type": "string"
+    }
+  ],
+  "theme": {
+    "tokens": {
+      "colors": {
+        "primary": "#111111",
+        "accent": "#F0ABD8",
+        "background": "#F4F7F3",
+        "surface": "#FFFFFF",
+        "text_primary": "#0F1B12",
+        "text_secondary": "#6B7280",
+        "border": "#E3E7E2",
+        "error": "#DC2626",
+        "success": "#2E7D32"
+      },
+      "typography": {
+        "font_family": "system",
+        "font_weight_scale": "bold"
+      },
+      "shape": {
+        "corner_radius": 16,
+        "shadow_style": "none"
+      },
+      "spacing": {
+        "unit": 4
+      }
+    }
+  },
+  "localizations": {
+    "en": {
+      "welcome.title": "Still can't quiet your mind?",
+      "welcome.subtitle": "50,000+ people use this to sleep better, stress less, and finally feel like themselves",
+      "welcome.cta": "I'm ready",
+      "name.title": "First, what should we call you?",
+      "name.placeholder": "Your first name",
+      "name.error": "We need something to call you",
+      "name.cta": "Continue",
+      "focus.title": "Nice to meet you, {{first_name}}. What's hitting you hardest?",
+      "focus.sleep": "Sleep problems",
+      "focus.sleep_note": "Takes forever to fall asleep, or you wake up at 3am",
+      "focus.anxiety": "Constant anxiety",
+      "focus.anxiety_note": "Low-level dread that never really turns off",
+      "focus.burnout": "Complete burnout",
+      "focus.burnout_note": "Running on empty \u2014 nothing feels enjoyable anymore",
+      "focus.cta": "Continue",
+      "focus.sleep_hint": "Most people with this see a shift in the first two weeks."
+    }
+  },
+  "screens": [
+    {
+      "id": "welcome",
+      "archetype": "welcome",
+      "name": "Welcome",
+      "root": {
+        "type": "box",
+        "layout": {
+          "alignX": "center",
+          "padding": [
+            0,
+            24,
+            24,
+            24
+          ]
+        },
+        "style": {
+          "fill": {
+            "kind": "radial",
+            "center": [
+              0.3,
+              0.25
+            ],
+            "radius": 0.9,
+            "stops": [
+              {
+                "color": "#CFE9C9",
+                "at": 0
+              },
+              {
+                "color": "#F6E7F2",
+                "at": 0.6
+              },
+              {
+                "color": "#F4F7F3",
+                "at": 1
+              }
+            ]
+          }
+        },
+        "children": [
+          {
+            "type": "box",
+            "self": {
+              "grow": 1
+            },
+            "layout": {
+              "alignX": "center",
+              "alignY": "center",
+              "gap": 16
+            },
+            "children": [
+              {
+                "type": "box",
+                "self": {
+                  "width": 72,
+                  "height": 72
+                },
+                "layout": {
+                  "mode": "row",
+                  "alignX": "center",
+                  "alignY": "center"
+                },
+                "style": {
+                  "fill": "surface",
+                  "corner": 22
+                },
+                "children": [
+                  {
+                    "type": "icon",
+                    "props": {
+                      "emoji": "\ud83e\udeb7",
+                      "size": 34
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "props": {
+                  "value": {
+                    "key": "welcome.title"
+                  },
+                  "align": "center"
+                },
+                "style": {
+                  "text": {
+                    "size": 40,
+                    "weight": "bold",
+                    "lineHeight": 1.08,
+                    "letterSpacing": -1
+                  }
+                }
+              },
+              {
+                "type": "text",
+                "props": {
+                  "value": {
+                    "key": "welcome.subtitle"
+                  },
+                  "align": "center"
+                },
+                "style": {
+                  "text": {
+                    "size": 15,
+                    "color": "text_secondary",
+                    "lineHeight": 1.4
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "type": "box",
+            "self": {
+              "width": "fill"
+            },
+            "layout": {
+              "mode": "row",
+              "alignX": "center",
+              "alignY": "center",
+              "padding": [
+                18,
+                20,
+                18,
+                20
+              ]
+            },
+            "style": {
+              "fill": "surface",
+              "corner": 999
+            },
+            "behavior": {
+              "tap": [
+                "next"
+              ]
+            },
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "value": {
+                    "key": "welcome.cta"
+                  }
+                },
+                "style": {
+                  "text": {
+                    "size": 16,
+                    "weight": "medium"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "top_bar": {
+        "back": false,
+        "progress": "none"
+      },
+      "transitions": [
+        {
+          "go": "name"
+        }
+      ]
+    },
+    {
+      "id": "name",
+      "archetype": "text_input",
+      "name": "Name",
+      "root": {
+        "type": "box",
+        "layout": {
+          "gap": 20,
+          "padding": [
+            16,
+            24,
+            24,
+            24
+          ],
+          "alignX": "stretch"
+        },
+        "style": {
+          "fill": "background"
+        },
+        "children": [
+          {
+            "type": "box",
+            "name": "Progress Indicator",
+            "behavior": {
+              "shared": "progress"
+            },
+            "self": {
+              "width": "fill"
+            },
+            "layout": {
+              "mode": "row",
+              "gap": 6
+            },
+            "children": [
+              {
+                "type": "box",
+                "self": {
+                  "grow": 1,
+                  "height": 4
+                },
+                "style": {
+                  "corner": 999,
+                  "fill": "border"
+                },
+                "behavior": {
+                  "step": {
+                    "index": 0
+                  },
+                  "animate": {
+                    "duration_ms": 300
+                  }
+                },
+                "states": {
+                  "completed": {
+                    "style": {
+                      "fill": "accent"
+                    }
+                  },
+                  "current": {
+                    "style": {
+                      "fill": "accent"
+                    }
+                  },
+                  "upcoming": {
+                    "style": {
+                      "fill": "border"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "box",
+                "self": {
+                  "grow": 1,
+                  "height": 4
+                },
+                "style": {
+                  "corner": 999,
+                  "fill": "border"
+                },
+                "behavior": {
+                  "step": {
+                    "index": 1
+                  },
+                  "animate": {
+                    "duration_ms": 300
+                  }
+                },
+                "states": {
+                  "completed": {
+                    "style": {
+                      "fill": "accent"
+                    }
+                  },
+                  "current": {
+                    "style": {
+                      "fill": "accent"
+                    }
+                  },
+                  "upcoming": {
+                    "style": {
+                      "fill": "border"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "props": {
+              "value": {
+                "key": "name.title"
+              }
+            },
+            "style": {
+              "text": {
+                "size": 30,
+                "weight": "bold",
+                "lineHeight": 1.15,
+                "letterSpacing": -0.6
+              }
+            }
+          },
+          {
+            "type": "box",
+            "self": {
+              "width": "fill"
+            },
+            "layout": {
+              "mode": "row",
+              "alignY": "center",
+              "padding": [
+                16,
+                16,
+                16,
+                16
+              ]
+            },
+            "style": {
+              "fill": "surface",
+              "corner": 999,
+              "stroke": {
+                "color": "border",
+                "width": 1
+              }
+            },
+            "states": {
+              "invalid": {
+                "style": {
+                  "stroke": {
+                    "color": "error",
+                    "width": 1
+                  }
+                }
+              }
+            },
+            "children": [
+              {
+                "type": "input",
+                "self": {
+                  "grow": 1
+                },
+                "bind": {
+                  "save_to": "first_name"
+                },
+                "props": {
+                  "placeholder": {
+                    "key": "name.placeholder"
+                  }
+                },
+                "behavior": {
+                  "input": {
+                    "kind": "text",
+                    "validate": [
+                      {
+                        "rule": "required",
+                        "message": {
+                          "key": "name.error"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            "behavior": {
+              "input": {
+                "kind": "text"
+              }
+            }
+          },
+          {
+            "type": "box",
+            "name": "Footer",
+            "self": {
+              "position": "fixed",
+              "inset": {
+                "left": 24,
+                "right": 24,
+                "bottom": 24
+              },
+              "anchorX": "stretch",
+              "anchorY": "bottom"
+            },
+            "layout": {
+              "mode": "row",
+              "alignX": "center",
+              "alignY": "center",
+              "padding": [
+                18,
+                20,
+                18,
+                20
+              ]
+            },
+            "style": {
+              "fill": "accent",
+              "corner": 999
+            },
+            "states": {
+              "disabled": {
+                "style": {
+                  "opacity": 0.4
+                }
+              }
+            },
+            "behavior": {
+              "tap": [
+                "next"
+              ]
+            },
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "value": {
+                    "key": "name.cta"
+                  }
+                },
+                "style": {
+                  "text": {
+                    "size": 16,
+                    "weight": "medium"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "top_bar": {
+        "back": true,
+        "progress": "none"
+      },
+      "transitions": [
+        {
+          "go": "focus"
+        }
+      ]
+    },
+    {
+      "id": "focus",
+      "archetype": "single_choice",
+      "name": "Focus",
+      "root": {
+        "type": "box",
+        "layout": {
+          "gap": 20,
+          "padding": [
+            16,
+            24,
+            24,
+            24
+          ],
+          "alignX": "stretch",
+          "scroll": "vertical"
+        },
+        "style": {
+          "fill": "background"
+        },
+        "children": [
+          {
+            "type": "text",
+            "props": {
+              "value": {
+                "key": "focus.title"
+              }
+            },
+            "style": {
+              "text": {
+                "size": 30,
+                "weight": "bold",
+                "lineHeight": 1.15,
+                "letterSpacing": -0.6
+              }
+            }
+          },
+          {
+            "type": "box",
+            "name": "Options",
+            "bind": {
+              "save_to": "focus"
+            },
+            "behavior": {
+              "group": {
+                "name": "focus"
+              }
+            },
+            "layout": {
+              "gap": 12,
+              "alignX": "stretch"
+            },
+            "children": [
+              {
+                "type": "box",
+                "behavior": {
+                  "select": {
+                    "group": "focus",
+                    "value": "sleep",
+                    "title": {
+                      "key": "focus.sleep"
+                    }
+                  },
+                  "animate": {
+                    "duration_ms": 140
+                  }
+                },
+                "layout": {
+                  "mode": "row",
+                  "gap": 12,
+                  "alignY": "start",
+                  "padding": [
+                    16,
+                    16,
+                    16,
+                    16
+                  ]
+                },
+                "style": {
+                  "fill": "surface",
+                  "corner": 16
+                },
+                "states": {
+                  "selected": {
+                    "style": {
+                      "stroke": {
+                        "color": "primary",
+                        "width": 2
+                      }
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "type": "icon",
+                    "props": {
+                      "emoji": "\ud83e\udd71",
+                      "size": 18
+                    }
+                  },
+                  {
+                    "type": "box",
+                    "self": {
+                      "grow": 1
+                    },
+                    "layout": {
+                      "gap": 2
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "props": {
+                          "value": {
+                            "key": "focus.sleep"
+                          }
+                        },
+                        "style": {
+                          "text": {
+                            "size": 16,
+                            "weight": "medium"
+                          }
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "props": {
+                          "value": {
+                            "key": "focus.sleep_note"
+                          }
+                        },
+                        "style": {
+                          "text": {
+                            "size": 13,
+                            "color": "text_secondary"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "box",
+                "behavior": {
+                  "select": {
+                    "group": "focus",
+                    "value": "anxiety",
+                    "title": {
+                      "key": "focus.anxiety"
+                    }
+                  },
+                  "animate": {
+                    "duration_ms": 140
+                  }
+                },
+                "layout": {
+                  "mode": "row",
+                  "gap": 12,
+                  "alignY": "start",
+                  "padding": [
+                    16,
+                    16,
+                    16,
+                    16
+                  ]
+                },
+                "style": {
+                  "fill": "surface",
+                  "corner": 16
+                },
+                "states": {
+                  "selected": {
+                    "style": {
+                      "stroke": {
+                        "color": "primary",
+                        "width": 2
+                      }
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "type": "icon",
+                    "props": {
+                      "emoji": "\ud83d\ude30",
+                      "size": 18
+                    }
+                  },
+                  {
+                    "type": "box",
+                    "self": {
+                      "grow": 1
+                    },
+                    "layout": {
+                      "gap": 2
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "props": {
+                          "value": {
+                            "key": "focus.anxiety"
+                          }
+                        },
+                        "style": {
+                          "text": {
+                            "size": 16,
+                            "weight": "medium"
+                          }
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "props": {
+                          "value": {
+                            "key": "focus.anxiety_note"
+                          }
+                        },
+                        "style": {
+                          "text": {
+                            "size": 13,
+                            "color": "text_secondary"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "box",
+                "behavior": {
+                  "select": {
+                    "group": "focus",
+                    "value": "burnout",
+                    "title": {
+                      "key": "focus.burnout"
+                    }
+                  },
+                  "animate": {
+                    "duration_ms": 140
+                  }
+                },
+                "layout": {
+                  "mode": "row",
+                  "gap": 12,
+                  "alignY": "start",
+                  "padding": [
+                    16,
+                    16,
+                    16,
+                    16
+                  ]
+                },
+                "style": {
+                  "fill": "surface",
+                  "corner": 16
+                },
+                "states": {
+                  "selected": {
+                    "style": {
+                      "stroke": {
+                        "color": "primary",
+                        "width": 2
+                      }
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "type": "icon",
+                    "props": {
+                      "emoji": "\ud83e\udeab",
+                      "size": 18
+                    }
+                  },
+                  {
+                    "type": "box",
+                    "self": {
+                      "grow": 1
+                    },
+                    "layout": {
+                      "gap": 2
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "props": {
+                          "value": {
+                            "key": "focus.burnout"
+                          }
+                        },
+                        "style": {
+                          "text": {
+                            "size": 16,
+                            "weight": "medium"
+                          }
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "props": {
+                          "value": {
+                            "key": "focus.burnout_note"
+                          }
+                        },
+                        "style": {
+                          "text": {
+                            "size": 13,
+                            "color": "text_secondary"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "box",
+            "name": "Sleep hint",
+            "visible": {
+              "when": {
+                "var": "focus",
+                "op": "==",
+                "value": "sleep"
+              }
+            },
+            "layout": {
+              "mode": "row",
+              "gap": 8,
+              "alignY": "center",
+              "padding": [
+                12,
+                14,
+                12,
+                14
+              ]
+            },
+            "style": {
+              "fill": "#EAF4E6",
+              "corner": 12
+            },
+            "children": [
+              {
+                "type": "icon",
+                "props": {
+                  "emoji": "\ud83c\udf19",
+                  "size": 16
+                }
+              },
+              {
+                "type": "text",
+                "self": {
+                  "grow": 1
+                },
+                "props": {
+                  "value": {
+                    "key": "focus.sleep_hint"
+                  }
+                },
+                "style": {
+                  "text": {
+                    "size": 13,
+                    "color": "#2E7D32"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "type": "box",
+            "self": {
+              "width": "fill"
+            },
+            "layout": {
+              "mode": "row",
+              "alignX": "center",
+              "alignY": "center",
+              "padding": [
+                18,
+                20,
+                18,
+                20
+              ]
+            },
+            "style": {
+              "fill": "accent",
+              "corner": 999
+            },
+            "behavior": {
+              "tap": [
+                "submit"
+              ]
+            },
+            "children": [
+              {
+                "type": "text",
+                "props": {
+                  "value": {
+                    "key": "focus.cta"
+                  }
+                },
+                "style": {
+                  "text": {
+                    "size": 16,
+                    "weight": "medium"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "top_bar": {
+        "back": true,
+        "progress": "none"
+      },
+      "transitions": [
+        {
+          "if": {
+            "var": "focus",
+            "op": "==",
+            "value": "burnout"
+          },
+          "go": "end:escalated"
+        },
+        {
+          "go": "end:completed"
+        }
+      ]
+    }
+  ]
+}

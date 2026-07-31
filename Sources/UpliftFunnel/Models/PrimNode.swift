@@ -77,7 +77,18 @@ public struct PrimFlow: Sendable {
     public let theme: PrimTheme
     public let screens: [PrimScreen]
 
+    /// The document exactly as it was served.
+    ///
+    /// The v3 renderer reads the raw tree rather than this struct's parsed
+    /// fields, and deliberately: `PrimFlow` keeps what v2's renderer needed,
+    /// and every property it does not keep is a property the layout engine
+    /// would silently lay out without. Holding the original means a schema
+    /// addition reaches the screen without a model change — which is the whole
+    /// forward-compatibility claim the SDK makes.
+    public let raw: JSONValue
+
     public init(json: JSONValue) {
+        self.raw = json
         self.defaultLocale = json["default_locale"].stringValue ?? "en"
         self.locales = (json["locales"].arrayValue ?? [])
             .compactMap { $0.stringifiedValue }
