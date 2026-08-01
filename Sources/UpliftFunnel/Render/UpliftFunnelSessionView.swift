@@ -105,6 +105,12 @@ public struct UpliftFunnelSessionView: View {
         view.onPurchase = purchase
         view.onRestore = restore
         view.reduceMotion = reduceMotion
+        // The eighth handoff, and the one that was missing: a plan card scopes
+        // `{{product.price}}` from this map, so without it every paywall the
+        // SDK has ever drawn printed its own braces. `setProducts` was reaching
+        // the session's flat `price.<id>` variables the whole time, which is
+        // why this looked like it worked.
+        view.products = configured ? productScope(UpliftFunnel.lookupProducts()) : [:]
         return view
     }
 

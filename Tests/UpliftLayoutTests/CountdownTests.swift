@@ -101,4 +101,97 @@ final class CountdownTests: XCTestCase {
             "a token outside the countdown box must stay literal, not resolve to 00"
         )
     }
+
+    // MARK: - completion
+
+    /// `countdown.done` is ABSENT while the timer runs rather than `"false"`.
+    ///
+    /// Absence is what makes the plain `is_set` operator work, and `is_set` is
+    /// the one comparison every evaluator on every platform already spells the
+    /// same way — so an author gates a CTA on it without anything else in the
+    /// stack having to change.
+    func testDoneIsAbsentWhileRunningAndSetAtZero() {
+        XCTAssertNil(vars(["duration_ms": 10_000], now: 4_000, entered: 0)["countdown.done"])
+        XCTAssertEqual(vars(["duration_ms": 10_000], now: 10_000, entered: 0)["countdown.done"], "true")
+        XCTAssertEqual(vars(["duration_ms": 10_000], now: 99_000, entered: 0)["countdown.done"], "true")
+    }
+
+    func testRemainingMillisecondsArePublished() {
+        XCTAssertEqual(vars(["duration_ms": 10_000], now: 2_500, entered: 0)["countdown.remaining_ms"], "7500")
+        XCTAssertEqual(vars(["duration_ms": 10_000], now: 60_000, entered: 0)["countdown.remaining_ms"], "0")
+    }
+
+    /// A screen that finishes on the frame it appears is a screen nobody sees.
+    /// `duration_ms` is optional and `0` is legal, but neither means "advance
+    /// instantly" — the Dart engine learned this once and the lesson did not
+    /// survive the port to native.
+    func testAnAbsentOrNonPositiveDurationFallsBackToThreeSeconds() {
+        XCTAssertEqual(LayoutDecoder.duration([:]), 3000)
+        XCTAssertEqual(LayoutDecoder.duration(["duration_ms": 0]), 3000)
+        XCTAssertEqual(LayoutDecoder.duration(["duration_ms": -1]), 3000)
+        XCTAssertEqual(LayoutDecoder.duration(["duration_ms": Double.nan]), 3000)
+        XCTAssertEqual(LayoutDecoder.duration(["duration_ms": 2_600]), 2600)
+        XCTAssertNil(
+            vars(["duration_ms": 0], now: 1_000, entered: 0)["countdown.done"],
+            "a zero duration must run the fallback, not complete on arrival"
+        )
+    }
+
+    /// The whole point of the feature, and the bug it closes: a loading screen
+    /// declares where to go and, until now, nothing ever took it there.
+    func testACompletedCountdownYieldsItsAction() {
+        let flow: [String: Any] = ["screens": [["root": [
+            "type": "box",
+            "children": [[
+                "type": "box",
+                "behavior": ["countdown": ["duration_ms": 2_600, "on_complete": "next"]],
+            ]],
+        ]]]]
+        func action(now: Double) -> String? {
+            LayoutDecoder.countdownComplete(
+                flow: flow, screenIndex: 0,
+                input: LayoutInput(now: now, screenEnteredAt: 0)
+            )
+        }
+        XCTAssertNil(action(now: 2_000), "still running")
+        XCTAssertEqual(action(now: 2_600), "next")
+    }
+
+    func testACountdownWithoutAnActionYieldsNothing() {
+        let flow: [String: Any] = ["screens": [["root": [
+            "type": "box",
+            "behavior": ["countdown": ["duration_ms": 1_000]],
+        ]]]]
+        XCTAssertNil(
+            LayoutDecoder.countdownComplete(
+                flow: flow, screenIndex: 0, input: LayoutInput(now: 9_000, screenEnteredAt: 0)
+            ),
+            "a presentational countdown must not advance a screen on its own"
+        )
+    }
+
+    /// A CTA hidden until the timer finishes — the mechanism an author uses,
+    /// end to end, with no new condition operator and no new variable channel.
+    func testDoneGatesAVisibleWhen() throws {
+        let root: [String: Any] = [
+            "type": "box",
+            "behavior": ["countdown": ["duration_ms": 2_600, "on_complete": "next"]],
+            "children": [[
+                "type": "text",
+                "props": ["value": "Meet them"],
+                "visible": ["when": ["var": "countdown.done", "op": "is_set"]],
+            ]],
+        ]
+        func drawn(now: Double) throws -> Bool {
+            let tree = try XCTUnwrap(
+                LayoutDecoder.layoutTree(
+                    screen: ["root": root],
+                    input: LayoutInput(now: now, screenEnteredAt: 0)
+                )
+            )
+            return !tree.children.isEmpty
+        }
+        XCTAssertFalse(try drawn(now: 1_000), "the button is not there while the crew is briefing")
+        XCTAssertTrue(try drawn(now: 2_600), "and it is there the moment they are briefed")
+    }
 }

@@ -26,6 +26,21 @@ public struct LayoutInput: Sendable {
     /// characters that size the row completely differently from "€8.99".
     public var products: [String: [String: String]]
 
+    /// Group name → the key its answer is stored under.
+    ///
+    /// A group names where its options' answer goes with `bind.save_to`, which
+    /// is not always the group's own name. The tap writes to that key, so the
+    /// `selected` state has to READ it — reading by group name instead meant a
+    /// group called `category` bound to `business_category` could be tapped and
+    /// never lit up, while a group whose two names happened to match worked.
+    ///
+    /// Collected SCREEN-WIDE by `layoutTree`, not scoped down the tree the way
+    /// `products` is, and deliberately: `InteractionMap` — the write side —
+    /// resolves `groups[select.group]` against a flat screen-wide table, so a
+    /// read side that resolved by ancestry instead would disagree with it again
+    /// the moment an option sat outside its group box. One table, both sides.
+    public var groupBindings: [String: String]
+
     /// key → copy, for the locale being laid out.
     ///
     /// Text is measured, so the SHAPED STRING has to be the one the user sees.
@@ -58,6 +73,7 @@ public struct LayoutInput: Sendable {
         variables: [String: String] = [:],
         catalog: [String: String] = [:],
         products: [String: [String: String]] = [:],
+        groupBindings: [String: String] = [:],
         tokens: [String: String] = [:],
         now: Double = 0,
         screenEnteredAt: Double = 0
@@ -66,6 +82,7 @@ public struct LayoutInput: Sendable {
         self.variables = variables
         self.catalog = catalog
         self.products = products
+        self.groupBindings = groupBindings
         self.tokens = tokens
         self.now = now
         self.screenEnteredAt = screenEnteredAt
@@ -89,7 +106,90 @@ public enum LayoutDecoder {
         input: LayoutInput = LayoutInput()
     ) -> LayoutNode? {
         guard let root = screen["root"] as? [String: Any] else { return nil }
-        return node(root, path: "", input: input, inheritedState: nil)
+        var merged = input
+        // Both entry points funnel through here, so this is the one place that
+        // has to know where a group declares its storage key.
+        if merged.groupBindings.isEmpty {
+            merged.groupBindings = groupBindings(in: root)
+        }
+        return node(root, path: "", input: merged, inheritedState: nil)
+    }
+
+    /// Every `behavior.group` on the screen → the key its answer is stored
+    /// under. Same walk and same rule as `LayoutDecoder.interactions`, which
+    /// builds the write side of the pair.
+    private static func groupBindings(in root: [String: Any]) -> [String: String] {
+        var out: [String: String] = [:]
+        func walk(_ node: [String: Any]) {
+            if let g = (node["behavior"] as? [String: Any])?["group"] as? [String: Any],
+               let name = g["name"] as? String {
+                out[name] = (node["bind"] as? [String: Any])?["save_to"] as? String ?? name
+            }
+            for child in (node["children"] as? [[String: Any]]) ?? [] { walk(child) }
+        }
+        walk(root)
+        return out
+    }
+
+    /// Every image URL a screen will draw, in the EXACT form the decoded tree
+    /// looks them up by.
+    ///
+    /// The host fetches ahead of the paint, and it used to find these by
+    /// reading `props.url` off the raw JSON as a string. Two ways that missed:
+    /// a URL carrying a `{{token}}` was fetched under the literal braces and
+    /// looked up after substitution, so it never appeared; and a localized
+    /// `{ "key": … }` URL is not a string at all, so the cast dropped it. Both
+    /// disappear by resolving here, through the same two functions the image
+    /// branch of `node` uses — the fetch key and the lookup key now cannot
+    /// drift, because there is one expression producing both.
+    ///
+    /// `style.fill` image paints are collected RAW, deliberately: `DecodePaint`
+    /// reads them raw too, so the pair matches. A token inside a fill URL does
+    /// not resolve on either side — worth fixing, but it is a different edit
+    /// and this one must not make the two disagree.
+    public static func imageURLs(
+        flow: [String: Any],
+        screenIndex: Int,
+        locale: String? = nil,
+        input: LayoutInput = LayoutInput()
+    ) -> Set<String> {
+        guard let screens = flow["screens"] as? [[String: Any]],
+              screens.indices.contains(screenIndex),
+              let root = screens[screenIndex]["root"] as? [String: Any]
+        else { return [] }
+
+        var merged = input
+        if merged.catalog.isEmpty {
+            let loc = locale ?? (flow["default_locale"] as? String) ?? "en"
+            let all = flow["localizations"] as? [String: [String: String]] ?? [:]
+            merged.catalog = all[loc] ?? [:]
+        }
+
+        var out: Set<String> = []
+        func walk(_ node: [String: Any], _ input: LayoutInput) {
+            var input = input
+            // A product-bound box scopes its subtree here too — an image URL
+            // may interpolate one of those tokens.
+            if let ref = (node["behavior"] as? [String: Any])?["product"] as? [String: Any],
+               let key = ref["ref"] as? String {
+                let info = input.products[key] ?? [:]
+                for field in ["price", "period", "trial", "original_price", "savings"] {
+                    input.variables["product.\(field)"] = info[field] ?? ""
+                }
+            }
+            if (node["type"] as? String) == "image",
+               let raw = (node["props"] as? [String: Any])?["url"] {
+                let url = interpolate(localized(raw, input), input: input)
+                if !url.isEmpty, !url.contains("{{") { out.insert(url) }
+            }
+            if let fill = (node["style"] as? [String: Any])?["fill"] as? [String: Any],
+               let url = fill["url"] as? String, !url.isEmpty {
+                out.insert(url)
+            }
+            for child in (node["children"] as? [[String: Any]]) ?? [] { walk(child, input) }
+        }
+        walk(root, merged)
+        return out
     }
 
     /// Which step of its progress sequence a screen is — the input that decides
@@ -402,13 +502,27 @@ public enum LayoutDecoder {
         if let select = b["select"] as? [String: Any],
            let group = select["group"] as? String,
            let value = select["value"] as? String {
-            guard let chosen = input.selections[group] else {
+            // Read the key the tap wrote, not the group's name — see
+            // `LayoutInput.groupBindings`.
+            let key = input.groupBindings[group] ?? group
+            guard let chosen = input.selections[key] else {
                 // Nothing answered yet, so the author's default is what shows.
                 return (select["default"] as? Bool) == true ? "selected" : nil
             }
-            return chosen == value ? "selected" : nil
+            return holds(chosen, value) ? "selected" : nil
         }
         return nil
+    }
+
+    /// Whether an answer holds `value` — a scalar equals it, and the canonical
+    /// multi-select encoding (`["a","b"]`) contains it.
+    ///
+    /// Without the second case a multi-select could never light a card up: the
+    /// stored answer is a JSON array and no array is string-equal to one of its
+    /// own members. Mirrors `isSelected` in `render/state.ts`.
+    private static func holds(_ answer: String, _ value: String) -> Bool {
+        guard answer.hasPrefix("[") else { return answer == value }
+        return decodeList(answer).contains(value)
     }
 
     /// Whether a node's field has been answered AND fails its own rules.
@@ -480,13 +594,33 @@ public enum LayoutDecoder {
         let op = c["op"] as? String ?? "is_set"
         let actual = input.selections[variable] ?? input.variables[variable]
         let expected = c["value"].map { "\($0)" }
+        // The operator names are the schema's (`ConditionOp`), and the
+        // behaviour is `evaluateCondition` in `render/context.ts` case for
+        // case — that function is the normative one, and this stunted copy
+        // spelled `is_not_set` as `not_set` and knew neither `not_contains` nor
+        // the four comparisons. Every one of those fell into `default: true`,
+        // so the solver KEPT a node the painter had already dropped: on the web
+        // the two disagreed, and on device the node was simply never hidden.
+        let present = actual != nil && actual != "" && actual != "[]"
         switch op {
-        case "is_set": return actual != nil && actual != "" && actual != "[]"
-        case "not_set": return actual == nil || actual == "" || actual == "[]"
-        case "==": return actual == expected
-        case "!=": return actual != expected
-        case "contains": return actual?.contains(expected ?? "") ?? false
-        default: return true
+        case "is_set": return present
+        case "is_not_set", "not_set": return !present
+        case "==": return (actual ?? "") == (expected ?? "")
+        case "!=": return (actual ?? "") != (expected ?? "")
+        case "contains": return (actual ?? "").contains(expected ?? "")
+        case "not_contains": return !(actual ?? "").contains(expected ?? "")
+        case ">", "<", ">=", "<=":
+            guard let a = Double(actual ?? ""), let b = Double(expected ?? "") else { return false }
+            switch op {
+            case ">": return a > b
+            case "<": return a < b
+            case ">=": return a >= b
+            default: return a <= b
+            }
+        default:
+            // Unknown operator: fail open rather than trapping the user on a
+            // screen — same choice, and same reason, as the web.
+            return true
         }
     }
 
@@ -639,6 +773,14 @@ public enum LayoutDecoder {
             out += rest[rest.startIndex..<open.lowerBound]
             if let value, !value.isEmpty {
                 out += displayValue(value)
+            } else if name.hasPrefix("product.") {
+                // The one namespace the document can never supply. A price
+                // comes from the store, so an empty `{{product.price}}` means
+                // the store had nothing — and a paywall that shows a real user
+                // seventeen characters of braces is unshippable, whichever way
+                // the width falls. Blank instead. Every other token keeps its
+                // braces for the reason above.
+                out += ""
             } else {
                 out += "{{\(name)}}"
             }
@@ -667,19 +809,39 @@ public enum LayoutDecoder {
         if let target = spec["target"] as? String, let at = iso8601(target) {
             deadline = at
         } else {
-            deadline = input.screenEnteredAt + ((spec["duration_ms"] as? NSNumber)?.doubleValue ?? 0)
+            deadline = input.screenEnteredAt + duration(spec)
         }
         // A zero clock means the caller has no time to give (the golden route),
         // so the countdown shows its full length rather than a deadline long past.
         let left = max(0, input.now == 0 ? deadline - input.screenEnteredAt : deadline - input.now)
         let total = Int(left / 1000)
         func pad(_ n: Int) -> String { n < 10 ? "0\(n)" : "\(n)" }
-        return [
+        var out = [
             "countdown.days": "\(total / 86400)",
             "countdown.hours": pad(total / 3600 % 24),
             "countdown.minutes": pad(total / 60 % 60),
             "countdown.seconds": pad(total % 60),
+            "countdown.remaining_ms": "\(Int(left))",
         ]
+        // ABSENT while running, rather than "false". `is_set` is the one
+        // condition operator every evaluator on every platform already spells
+        // the same way, so `visible: { when: { var: "countdown.done", op:
+        // "is_set" } }` hides a CTA until the timer finishes without anything
+        // else in the stack having to change.
+        if left <= 0 { out["countdown.done"] = "true" }
+        return out
+    }
+
+    /// How long a `behavior.countdown` runs for, in milliseconds.
+    ///
+    /// `duration_ms` is optional and `0` is a legal value, but neither means
+    /// "finish instantly" — a screen that completes on the frame it appears is
+    /// a screen the user never sees. Absent, zero, negative and non-finite all
+    /// fall back to three seconds.
+    static func duration(_ spec: [String: Any]) -> Double {
+        let raw = (spec["duration_ms"] as? NSNumber)?.doubleValue ?? 0
+        guard raw.isFinite, raw > 0 else { return 3000 }
+        return raw
     }
 
     /// Epoch milliseconds for an ISO-8601 instant, or nil.

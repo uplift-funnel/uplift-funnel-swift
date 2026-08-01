@@ -29,16 +29,30 @@ public struct GroupBehavior: Equatable, Sendable {
     /// Move on as soon as an option is chosen.
     public var autoAdvance: Bool
     /// More than one value may be held at once, encoded as a JSON array.
+    ///
+    /// The document spells this `behavior.group.mode: "multi"`; see
+    /// `LayoutDecoder.interactions`, which is the only place it is decoded.
     public var multi: Bool
     /// Where the answer is stored, if the group names somewhere other than
     /// itself.
     public var saveTo: String?
+    /// How many values a `multi` group must and may hold. `max` is enforced
+    /// here — a tap that would exceed it is refused rather than silently
+    /// dropping the oldest answer. `min` is a gate on leaving the screen, which
+    /// this type only carries; nothing in the renderer acts on it yet.
+    public var min: Int?
+    public var max: Int?
 
-    public init(name: String, autoAdvance: Bool = false, multi: Bool = false, saveTo: String? = nil) {
+    public init(
+        name: String, autoAdvance: Bool = false, multi: Bool = false,
+        saveTo: String? = nil, min: Int? = nil, max: Int? = nil
+    ) {
         self.name = name
         self.autoAdvance = autoAdvance
         self.multi = multi
         self.saveTo = saveTo
+        self.min = min
+        self.max = max
     }
 }
 
@@ -217,6 +231,10 @@ public struct InteractionMap: Equatable, Sendable {
         if let at = held.firstIndex(of: select.value) {
             held.remove(at: at)
         } else {
+            // A group past its `max` refuses the tap rather than evicting an
+            // earlier answer: the user chose those, and silently dropping one
+            // to make room reads as the screen losing an answer at random.
+            if let max = group?.max, held.count >= max { return answers }
             held.append(select.value)
         }
         out[key] = encodeList(held)
