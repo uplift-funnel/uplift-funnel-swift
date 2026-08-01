@@ -37,6 +37,15 @@ struct ScreenModel {
     /// then this whole mechanism costs nothing.
     var lift: Double = 0
 
+    /// The screen's own background, taken off the root and drawn full-bleed.
+    ///
+    /// A screen's fill lives on its root box, and that box begins BELOW the
+    /// status bar and the chrome row — so a gradient stopped short of the top
+    /// and left a band of window behind it. It is one paint either way, so it
+    /// is hoisted here and cleared from the root item below: drawing it twice
+    /// at two different heights seams a gradient down the middle.
+    var background: PaintStyle?
+
     /// Everything that scrolls with the body.
     var scrolling: DisplayList
     /// Everything pinned to the screen — `position: fixed`. Drawn over the

@@ -148,7 +148,7 @@ struct PrimitiveScreenV3: View {
             // Shifted ONCE, here, so everything downstream shares one set of
             // coordinates: the canvas paints them, `hitTest` answers in them,
             // and the native overlays are positioned at them.
-            let shifted = list.translated(dy: lift)
+            let (background, shifted) = list.translated(dy: lift).hoistingRootFill()
 
             let fields = interactions.targets.values
                 .compactMap { target -> (target: TapTarget, item: PaintItem)? in
@@ -169,6 +169,7 @@ struct PrimitiveScreenV3: View {
                 interactions: interactions,
                 rootScroll: rootScroll,
                 lift: lift,
+                background: background,
                 scrolling: DisplayList(
                     size: rootScroll?.content.size ?? list.size, items: scrollingItems
                 ),
@@ -187,6 +188,37 @@ struct PrimitiveScreenV3: View {
     var body: some View {
         if let model {
             ZStack(alignment: .topLeading) {
+                // The screen's own background, before anything else and past
+                // every inset: `safeTop` here is the whole band above the body
+                // — the status bar AND the chrome row — so a gradient reaches
+                // the top of the display instead of starting under the back
+                // button. Drawn with the engine rather than translated into
+                // SwiftUI, so a linear, a radial and an image all arrive the
+                // way the painter already knows how to draw them.
+                if let background = model.background {
+                    PrimitiveCanvas(
+                        list: DisplayList(
+                            size: Size2D(width: size.width, height: drawnHeight + safeTop),
+                            items: [PaintItem(
+                                path: "__background",
+                                frame: Rect(
+                                    x: 0, y: 0,
+                                    width: size.width, height: drawnHeight + safeTop
+                                ),
+                                style: background
+                            )]
+                        ),
+                        painter: FramePainter(images: images),
+                        size: Size2D(width: size.width, height: drawnHeight + safeTop),
+                        // Paint only: a background that answered taps would take
+                        // them from the content sitting on it.
+                        hittable: [],
+                        onTap: { _ in }
+                    )
+                    .frame(width: size.width, height: drawnHeight + safeTop)
+                    .padding(.top, -safeTop)
+                    .allowsHitTesting(false)
+                }
                 if let scroll = model.rootScroll {
                     ScrollView(scroll.axis == .vertical ? .vertical : .horizontal) {
                         body(of: model, size: scroll.content.size)

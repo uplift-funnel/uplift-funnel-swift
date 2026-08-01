@@ -1,5 +1,6 @@
 import XCTest
 @testable import UpliftLayout
+@testable import UpliftFunnel
 
 /// The four things the editor was getting wrong that this engine was getting
 /// wrong too, in exactly the same places.
@@ -150,6 +151,62 @@ final class NativeLeafAndStepTests: XCTestCase {
             ]]]], screenIndex: 0)
         )
         XCTAssertEqual(tree.children.first?.text?.text, "BEST VALUE")
+    }
+
+    // MARK: - the screen's background reaches the top of the display
+
+    private func list(_ root: [String: Any]) throws -> DisplayList {
+        try XCTUnwrap(
+            try ScreenRenderer(measurer: Ruler()).displayList(
+                flow: ["screens": [["root": root]]],
+                screenIndex: 0,
+                viewport: Viewport(size: Size2D(width: 390, height: 800), safeTop: 0)
+            )
+        )
+    }
+
+    func testTheRootFillIsHoistedOffTheTreeSoItCanBeDrawnFullBleed() throws {
+        let (background, stripped) = try list([
+            "type": "box",
+            "style": ["fill": "#101828", "corner": 12],
+            "children": [["type": "text", "props": ["value": "hi"]]],
+        ]).hoistingRootFill()
+
+        XCTAssertNotNil(background?.fill)
+        // What stays behind keeps the rest of the root's paint and none of the
+        // fill — drawing it twice at two heights seams a gradient.
+        XCTAssertNil(stripped.item(at: "")?.style.fill)
+        XCTAssertEqual(stripped.item(at: "")?.style.corners, background?.corners)
+    }
+
+    func testAScreenWithNoRootFillHoistsNothing() throws {
+        let (background, stripped) = try list([
+            "type": "box",
+            "children": [["type": "text", "props": ["value": "hi"]]],
+        ]).hoistingRootFill()
+        XCTAssertNil(background)
+        XCTAssertEqual(stripped.items.count, 2)
+    }
+
+    func testABleedingHeroRisesByTheWholeBandAboveTheBody() throws {
+        // The host passes the status bar AND the chrome row as `safeTop`, so a
+        // hero carrying `ignoreSafeArea` reaches the top of the DISPLAY rather
+        // than stopping a chrome row short of it.
+        let tree = try XCTUnwrap(
+            LayoutDecoder.layoutTree(flow: ["screens": [["root": [
+                "type": "box",
+                "children": [[
+                    "type": "box",
+                    "self": ["width": "fill", "height": 200, "ignoreSafeArea": true],
+                ]],
+            ]]]], screenIndex: 0)
+        )
+        let solved = try FlexSolver(measurer: Ruler()).solve(
+            root: tree,
+            viewport: Viewport(size: Size2D(width: 390, height: 700), safeTop: 51 + 44)
+        )
+        let hero = try XCTUnwrap(solved.first { $0.path == "0" })
+        XCTAssertEqual(hero.rect.y, -(51 + 44), accuracy: 0.01)
     }
 
     // MARK: - which step of the sequence a screen is

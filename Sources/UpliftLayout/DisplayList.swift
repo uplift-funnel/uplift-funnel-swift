@@ -172,6 +172,33 @@ public struct DisplayList: Equatable, Sendable {
     ///
     /// Clips travel too. A shifted item inside an unshifted clip would be
     /// cropped against a rectangle that is no longer where it is.
+    /// The screen's own background, lifted off the root, and the list without it.
+    ///
+    /// A screen's fill lives on its root box, and that box begins below every
+    /// inset the host imposes — the status bar and the chrome row. Painted
+    /// there, a gradient stops short of the top of the display and leaves a
+    /// band of window above it, which is what every gradient screen showed on
+    /// both platforms.
+    ///
+    /// So the host draws it full-bleed instead, and the root keeps everything
+    /// else it had: a stroke and a shadow still belong to the root's own box.
+    /// Only the fill moves, because drawing it twice at two different heights
+    /// seams a gradient down the middle.
+    public func hoistingRootFill() -> (background: PaintStyle?, list: DisplayList) {
+        guard let root = items.first(where: { $0.path == "" }), root.style.fill != nil else {
+            return (nil, self)
+        }
+        return (
+            root.style,
+            DisplayList(size: size, items: items.map { item in
+                guard item.path == "" else { return item }
+                var stripped = item
+                stripped.style.fill = nil
+                return stripped
+            })
+        )
+    }
+
     public func translated(dy: Double) -> DisplayList {
         guard dy != 0 else { return self }
         return DisplayList(size: size, items: items.map { item in

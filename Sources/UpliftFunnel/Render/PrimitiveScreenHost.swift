@@ -70,7 +70,12 @@ struct PrimitiveScreenHost: View {
                         width: geo.size.width,
                         height: geo.size.height - chrome - safeTop
                     ),
-                    safeTop: safeTop,
+                    // The WHOLE band above the body: the status bar and the
+                    // chrome row. `ignoreSafeArea` means the top of the
+                    // display, and lifting a hero by the status bar alone left
+                    // it sitting a chrome row short of it — the same gap the
+                    // dashboard had until `--uf-safe-top` started including it.
+                    safeTop: safeTop + chrome,
                     // Identity, not content: the flow dictionary cannot be
                     // hashed, and its id plus version moves exactly when the
                     // document does.
