@@ -393,8 +393,19 @@ final class LayoutPass {
         // on any explicit main-axis size, so a 300pt hero inside a scrolling
         // column stays 300pt and the parent overflows — the scroll is the
         // answer, not squashing the child.
-        guard totalWeight > 0, free > 0 else { return bases }
-        return bases.indices.map { lu(bases[$0] + free * (growWeights[$0] / totalWeight)) }
+        let shared = totalWeight > 0 && free > 0
+            ? bases.indices.map { lu(bases[$0] + free * (growWeights[$0] / totalWeight)) }
+            : bases
+        // A growing child's FLOOR.
+        //
+        // Its base is zero, so when there is little to share it ends up a few
+        // points wide and its text wraps one letter per line — which is what a
+        // plan card's title column did beside an unbreakable price. CSS clamps
+        // a flex item to its `min-width`; so does solver.ts, and so does this.
+        return shared.indices.map { i in
+            let floor = horizontal ? flow[i].minWidth : flow[i].minHeight
+            return floor.map { max(shared[i], $0) } ?? shared[i]
+        }
     }
 
     /// The two-pass distribution: base sizes, then free space by grow weight.

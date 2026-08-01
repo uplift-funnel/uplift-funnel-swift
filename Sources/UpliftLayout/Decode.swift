@@ -92,6 +92,51 @@ public enum LayoutDecoder {
         return node(root, path: "", input: input, inheritedState: nil)
     }
 
+    /// Which step of its progress sequence a screen is — the input that decides
+    /// completed/current/upcoming for every node carrying `behavior.step`.
+    ///
+    /// A progress bar is a row of boxes that each declare their own index, so
+    /// the tree says what the sequence looks like and nothing in it says where
+    /// the user currently is. That is a property of the FLOW: the screens
+    /// drawing the same sequence, in document order, are its steps, and this
+    /// screen's position among them is the answer.
+    ///
+    /// The decoder reads it as `variables["__stepIndex"]`, which nothing was
+    /// writing — so every screen laid out as step zero and the bar never moved.
+    /// Mirrors `stepIndexOf` in @funnel/schema. Nil when the screen draws no
+    /// sequence, which is most of them.
+    public static func stepIndex(flow: [String: Any], screenIndex: Int) -> Int? {
+        guard let screens = flow["screens"] as? [[String: Any]],
+              screens.indices.contains(screenIndex) else { return nil }
+        guard let sequence = sequences(in: screens[screenIndex]).first else { return nil }
+        var position = 0
+        for (i, screen) in screens.enumerated() {
+            guard sequences(in: screen).contains(sequence) else { continue }
+            if i == screenIndex { return position }
+            position += 1
+        }
+        return nil
+    }
+
+    /// The `behavior.step` sequence names a screen's tree draws, first seen first.
+    private static func sequences(in screen: [String: Any]) -> [String] {
+        var out: [String] = []
+        func walk(_ any: Any?) {
+            if let list = any as? [Any] {
+                list.forEach(walk)
+                return
+            }
+            guard let node = any as? [String: Any] else { return }
+            if let step = (node["behavior"] as? [String: Any])?["step"] as? [String: Any] {
+                let name = (step["of"] as? String) ?? ""
+                if !out.contains(name) { out.append(name) }
+            }
+            for value in node.values { walk(value) }
+        }
+        walk(screen["root"])
+        return out
+    }
+
     /// Decode a whole flow's screen, pulling the catalog out of the document so
     /// the caller does not have to know how localization is stored.
     public static func layoutTree(
@@ -249,14 +294,57 @@ public enum LayoutDecoder {
             )
         }
 
+        // The height a native leaf occupies, when the platform decides it rather
+        // than content does.
+        //
+        // Only `input` had one, which meant every other sealed leaf decoded as
+        // a zero-height box: a sign-in stack, a permission explainer and a
+        // photo frame all solved to nothing and the renderer drew them over
+        // whatever came next. Mirrors `applyControlSize` in decode.ts — these
+        // numbers are the cross-platform contract, not a web detail.
+        switch type {
+        case "signin":
+            // A column of provider buttons: 14pt padding around a 16pt label,
+            // 10pt apart. Apple and Google own these, so their size is not ours.
+            let providers = (props?["providers"] as? [[String: Any]])?.count ?? 0
+            let count = min(max(providers, 1), 5)
+            let button = 2 * 14 + lu(16 * 1.2)
+            n.controlHeight = Double(count) * button + Double(count - 1) * 10
+        case "permission":
+            // The dialog is the system's; what occupies the tree is the row
+            // standing in for it.
+            n.controlHeight = 2 * 12 + lu(13 * 1.2) + 2
+        case "photo_upload":
+            // A circular frame is a fixed 140pt disc plus its 2pt ring; a
+            // rectangular one is width-driven at 3:2, and has to claim the
+            // width too — an aspect on a HUG box with no content resolves
+            // against zero and comes out zero tall.
+            if (props?["shape"] as? String) == "circle" {
+                n.controlHeight = 144
+                if n.width == .hug { n.width = .points(144) }
+            } else {
+                if n.width == .hug { n.width = .fill }
+                if n.aspect == nil { n.aspect = 1.5 }
+            }
+        case "paywall_handoff", "custom":
+            n.controlHeight = 2 * 10 + lu(12 * 1.2) + 2
+        default:
+            break
+        }
+
         // `controlBox` in the web renderer: 12pt of vertical padding around a
-        // single 16pt body line. One line, always — a text field does not grow
-        // with its placeholder.
+        // single 16pt body line — three lines for a multiline, which is what
+        // `rows={3}` draws. A switch and a slider are fixed-size controls.
         if type == "input" {
             let kind = (behavior?["input"] as? [String: Any])?["kind"] as? String ?? "text"
-            if kind != "toggle" && kind != "slider" {
+            if kind == "toggle" {
+                n.controlHeight = 32
+            } else if kind == "slider" {
+                n.controlHeight = 24
+            } else {
                 let body = TYPE_RAMP["body"]!
-                n.controlHeight = 2 * 12 + lu(body.size * body.lineHeight)
+                let lines: Double = (props?["multiline"] as? Bool) == true ? 3 : 1
+                n.controlHeight = 2 * 12 + lu(body.size * body.lineHeight) * lines
                 // `controlBox` on the web: 12pt vertical, 14pt horizontal.
                 n.padding = Edges(top: 12, right: 14, bottom: 12, left: 14)
 
@@ -433,9 +521,18 @@ public enum LayoutDecoder {
             )
         }
 
-        let text = plainText(props, input: input)
-        guard !text.isEmpty else { return nil }
+        let plain = plainText(props, input: input)
+        guard !plain.isEmpty else { return nil }
         let t = style?["text"] as? [String: Any]
+        // Case is applied BEFORE measuring, because it changes the width. An
+        // uppercased label measures narrower than it paints, which is what
+        // wrapped "BEST VALUE" inside a badge sized for "Best value".
+        let text: String
+        switch t?["transform"] as? String {
+        case "uppercase": text = plain.uppercased()
+        case "lowercase": text = plain.lowercased()
+        default: text = plain
+        }
         let role = t?["role"] as? String ?? "body"
         let ramp = TYPE_RAMP[role] ?? TYPE_RAMP["body"]!
         let size = dbl(t?["size"]) ?? ramp.size

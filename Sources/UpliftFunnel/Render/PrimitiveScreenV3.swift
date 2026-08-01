@@ -63,9 +63,17 @@ struct PrimitiveScreenV3: View {
     }
 
     private var input: LayoutInput {
-        LayoutInput(
+        // `__stepIndex` rides in with the variables because that is the channel
+        // the decoder has: it decides completed/current/upcoming for every node
+        // carrying `behavior.step`. Without it every screen decodes as step
+        // zero — one lit segment, all the way through a funnel.
+        var variables = answers
+        if let step = LayoutDecoder.stepIndex(flow: flow, screenIndex: screenIndex) {
+            variables["__stepIndex"] = String(step)
+        }
+        return LayoutInput(
             selections: answers,
-            variables: answers,
+            variables: variables,
             products: products,
             now: clock.now,
             screenEnteredAt: clock.entered
