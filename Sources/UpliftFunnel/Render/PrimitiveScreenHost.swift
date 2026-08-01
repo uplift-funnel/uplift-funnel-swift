@@ -82,7 +82,12 @@ struct PrimitiveScreenHost: View {
                     flowVersion: "\(session.flow.id)@\(primFlow.raw["version"].stringifiedValue ?? "0")",
                     answers: answers,
                     images: images,
-                    onAction: dispatch
+                    onAction: dispatch,
+                    onPhotoUpload: { source, shape in
+                        await onPhotoUpload?(PhotoUploadRequest(source: source, shape: shape))
+                    },
+                    onPermission: { type in await onPermission?(type) ?? false },
+                    onSignIn: { provider in await onSignIn?(provider) ?? true }
                 )
             }
             .padding(.top, safeTop)

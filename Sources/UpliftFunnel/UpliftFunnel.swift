@@ -848,7 +848,20 @@ final class FunnelState {
         // not context — is readable by {{...}} text interpolation; context
         // is condition-evaluation-only. userVariables spreads last so an
         // explicit value still wins on conflict.
-        var initialVariables = productVariables(products.values)
+        // The flow's OWN declared defaults come first.
+        //
+        // `Variable.default` was parsed and never read, so a template that
+        // seeds an answer — a slider starting at 2400, a tier starting at
+        // "solo" — reached the device with nothing set: `{{monthly_spend}}`
+        // printed as itself, and a `visible.when` on that variable failed, so
+        // a paywall whose plan cards are gated on a default rendered with no
+        // plans at all. The web preview has always seeded them; H6 says a
+        // default is what makes interpolating a variable legal.
+        var initialVariables: [String: JSONValue] = [:]
+        for variable in flow.variables where !variable.defaultValue.isNull {
+            initialVariables[variable.name] = variable.defaultValue
+        }
+        initialVariables.merge(productVariables(products.values)) { _, new in new }
         if let userVariables {
             initialVariables.merge(userVariables) { _, new in new }
         }

@@ -274,6 +274,35 @@ final class FlowSessionTests: XCTestCase {
         XCTAssertEqual(session.currentScreen.id, "welcome")
     }
 
+    func testHandleActionSetWritesTypedLiteralWithoutNavigating() throws {
+        let session = try makeSession()
+
+        session.handleAction("set:goal=lose")
+        XCTAssertEqual(session.variables["goal"], .string("lose"))
+        // A `set:` is not a navigation — it composes with whatever else the
+        // node's action list carries, and moves nothing on its own.
+        XCTAssertEqual(session.currentScreen.id, "welcome")
+
+        // Typed from the DECLARATION: a number variable must not end up
+        // holding the string "7", or every later comparison against it fails.
+        session.handleAction("set:motivation=7")
+        XCTAssertEqual(session.variables["motivation"], .number(7))
+
+        // A value that does not fit the declared type is refused rather than
+        // coerced into a plausible wrong answer.
+        session.handleAction("set:motivation=high")
+        XCTAssertEqual(session.variables["motivation"], .number(7))
+
+        // Malformed, and an undeclared name: both no-ops.
+        session.handleAction("set:goal")
+        session.handleAction("set:=lose")
+        XCTAssertEqual(session.variables["goal"], .string("lose"))
+
+        // The value may itself contain '=' — only the first one splits.
+        session.handleAction("set:goal=a=b")
+        XCTAssertEqual(session.variables["goal"], .string("a=b"))
+    }
+
     func testHandleActionGoJumpsDirectly() throws {
         let session = try makeSession()
         session.handleAction("go:lose_path")

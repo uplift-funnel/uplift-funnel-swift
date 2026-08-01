@@ -125,6 +125,15 @@ struct TopBarChrome: View {
         }
     }
 
+    /// A glyph control, in a translucent disc.
+    ///
+    /// A bare chevron in the muted text colour disappears the moment a screen
+    /// opens on a photograph or a dark gradient, which is most of the gallery,
+    /// and it reads as chrome from a previous decade beside screens that draw
+    /// their own round close button. The disc is neutral-translucent, so it
+    /// darkens a light background and lightens a dark one without being told
+    /// which it is. A skip LABEL keeps the bare treatment: a pill around a word
+    /// competes with the screen's own buttons.
     private func button(
         _ glyph: String,
         size: Double? = nil,
@@ -134,6 +143,7 @@ struct TopBarChrome: View {
             Text(glyph)
                 .font(.system(size: size ?? glyphSize, weight: size == nil ? .regular : .medium))
                 .foregroundColor(tint)
+                .modifier(GlyphDisc(enabled: size == nil))
                 // A 44pt target, which is the platform minimum and bigger than
                 // the glyph. A skip label needs its own width.
                 .frame(minWidth: 44, minHeight: 44)
@@ -141,5 +151,19 @@ struct TopBarChrome: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The disc behind a chrome glyph — see `button(_:size:action:)`.
+private struct GlyphDisc: ViewModifier {
+    let enabled: Bool
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(Color.gray.opacity(0.18)))
+        } else {
+            content
+        }
     }
 }

@@ -30,6 +30,12 @@ struct PrimitiveScreenV3: View {
     @Binding var answers: [String: String]
     var images: [String: CGImage] = [:]
     var onAction: (String) -> Void = { _ in }
+    /// The three handoffs the sealed leaves need. Absent by default, because a
+    /// host that registered no picker gets a photo frame that does nothing
+    /// rather than a crash — the same contract the actions have.
+    var onPhotoUpload: ((String, String) async -> String?)?
+    var onPermission: ((String) async -> Bool)?
+    var onSignIn: ((String) async -> Bool)?
 
     /// Which field the keyboard is in, so only one overlay is focusable.
     @FocusState private var focused: String?
@@ -152,7 +158,8 @@ struct PrimitiveScreenV3: View {
 
             let fields = interactions.targets.values
                 .compactMap { target -> (target: TapTarget, item: PaintItem)? in
-                    guard target.input != nil, let item = shifted.item(at: target.path) else {
+                    guard target.input != nil || target.signIn != nil,
+                          let item = shifted.item(at: target.path) else {
                         return nil
                     }
                     return (target, item)
@@ -256,6 +263,17 @@ struct PrimitiveScreenV3: View {
             .frame(width: size.width, height: drawnHeight, alignment: .topLeading)
             .padding(.top, -(model.lift))
             .onAppear {
+                // The sealed permission node IS the system dialog, so it asks
+                // on appear rather than waiting to be tapped.
+                //
+                // It draws nothing — that is what "sealed because the dialog is
+                // the system's" means — so a tap-triggered one could never fire
+                // and the screen offered no way to grant anything. An author
+                // who wants a labelled button composes a box with the
+                // `permission:<type>` action instead; this node is the
+                // no-explainer case.
+                askSealedPermission(model)
+
                 // `duration_ms` counts from screen entry, so "when this
                 // appeared" is exactly the number wanted — and reading it here
                 // rather than in an initializer keeps a screen that is never
@@ -271,6 +289,27 @@ struct PrimitiveScreenV3: View {
             // A screen that will not lay out is a bug worth seeing, not a blank
             // the user silently stares at.
             Color.clear.overlay(Text("layout failed").font(.footnote).foregroundColor(.secondary))
+        }
+    }
+
+    /// Ask for whatever a sealed `permission` node on this screen covers.
+    ///
+    /// At most one per screen: two system dialogs stacked on one another is not
+    /// a flow anyone authored on purpose, and the first would swallow the
+    /// second anyway. Guarded by the answer already being written, so returning
+    /// to the screen with Back does not re-prompt.
+    private func askSealedPermission(_ model: ScreenModel) {
+        guard let permission = model.interactions.targets.values
+            .compactMap(\.permission)
+            .sorted(by: { $0.saveTo < $1.saveTo })
+            .first,
+            answers[permission.saveTo] == nil
+        else { return }
+
+        Task {
+            let granted = await onPermission?(permission.permission) ?? false
+            answers[permission.saveTo] = granted ? "true" : "false"
+            if permission.advanceOnResult, granted { onAction("next") }
         }
     }
 
@@ -311,6 +350,25 @@ struct PrimitiveScreenV3: View {
             focused = input.saveTo
             return
         }
+        // The sealed leaves hand off to the host and write the answer
+        // themselves. Each one owns something the SDK deliberately does not
+        // ship — a picker, Apple's button, the system dialog — so what happens
+        // here is a call out and a variable write, not a UI of our own.
+        if let photo = target.photoUpload {
+            Task {
+                guard let reference = await onPhotoUpload?(photo.source, photo.shape) else { return }
+                answers[photo.saveTo] = reference
+            }
+            return
+        }
+        if let permission = target.permission {
+            Task {
+                let granted = await onPermission?(permission.permission) ?? false
+                answers[permission.saveTo] = granted ? "true" : "false"
+                if permission.advanceOnResult, granted { onAction("next") }
+            }
+            return
+        }
         if let select = target.select {
             answers = interactions.answers(applying: select, to: answers)
             if let title = select.title {
@@ -328,8 +386,49 @@ struct PrimitiveScreenV3: View {
 
     @ViewBuilder
     private func overlay(for target: TapTarget, item: PaintItem) -> some View {
+        let box = item.contentBox
         if let input = target.input {
-            let box = item.contentBox
+            control(for: input)
+                .frame(width: box.width, height: box.height)
+                .position(x: box.x + box.width / 2, y: box.y + box.height / 2)
+        } else if let signIn = target.signIn {
+            signInStack(signIn)
+                .frame(width: box.width, height: box.height)
+                .position(x: box.x + box.width / 2, y: box.y + box.height / 2)
+        }
+    }
+
+    /// The control a `kind` asks for.
+    ///
+    /// One node type covers every field v2 spelled as six, and the KIND picks
+    /// the control — so a slider has to be a slider here. Until this, every
+    /// kind rendered a text field, which meant a slider screen showed a value
+    /// and nothing to move: `controlHeight` reserved the room and nothing was
+    /// drawn in it.
+    @ViewBuilder
+    private func control(for input: InputBehavior) -> some View {
+        switch input.kind {
+        case "slider":
+            Slider(
+                value: numeric(input.saveTo),
+                in: (input.min ?? 0)...(max(input.max ?? 100, (input.min ?? 0) + 1)),
+                step: input.step ?? 1
+            )
+        case "toggle":
+            Toggle("", isOn: boolean(input.saveTo)).labelsHidden()
+        case "date", "time", "datetime":
+            DatePicker(
+                "",
+                selection: date(input.saveTo, kind: input.kind),
+                displayedComponents: input.kind == "time"
+                    ? [.hourAndMinute]
+                    : (input.kind == "date" ? [.date] : [.date, .hourAndMinute])
+            )
+            .labelsHidden()
+            // Two styles, two branches: SwiftUI's modifier is generic over the
+            // style, so the ternary would have to unify two different types.
+            .modifier(WheelIfAsked(wheel: input.variant == "wheel"))
+        default:
             Group {
                 if input.secure {
                     SecureField(input.placeholder ?? "", text: binding(input.saveTo))
@@ -342,10 +441,112 @@ struct PrimitiveScreenV3: View {
             .autocorrectionDisabled(input.kind == "email")
             .focused($focused, equals: input.saveTo)
             .modifier(KeyboardKind(kind: input.kind))
-            .frame(width: box.width, height: box.height)
-            .position(x: box.x + box.width / 2, y: box.y + box.height / 2)
         }
     }
+
+    /// Apple's button and Google's are theirs, and their guidelines govern how
+    /// they look — so the author designs everything around this stack and not
+    /// the buttons in it.
+    @ViewBuilder
+    private func signInStack(_ signIn: SignInBehavior) -> some View {
+        VStack(spacing: 10) {
+            ForEach(signIn.providers, id: \.self) { provider in
+                Button {
+                    answers[signIn.saveTo] = provider
+                    Task {
+                        let ok = await onSignIn?(provider) ?? true
+                        if ok, signIn.advanceOnSuccess { onAction("next") }
+                    }
+                } label: {
+                    Text(signIn.labels[provider] ?? Self.providerLabel(provider))
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 47)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(signIn.appearance == "dark" ? .white : .black)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(signIn.appearance == "dark" ? Color.black : Color.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(
+                                    signIn.appearance == "dark" ? Color.clear : Color.black.opacity(0.12),
+                                    lineWidth: 1
+                                )
+                        )
+                )
+            }
+        }
+    }
+
+    private static func providerLabel(_ provider: String) -> String {
+        switch provider {
+        case "apple": return " Sign in with Apple"
+        case "google": return "Continue with Google"
+        case "facebook": return "Continue with Facebook"
+        case "email": return "Continue with email"
+        case "anonymous": return "Continue as guest"
+        default: return provider
+        }
+    }
+
+    /// A slider writes a NUMBER, and the answer map holds strings — so the
+    /// binding is where the two meet, rounded to the step the author set.
+    private func numeric(_ saveTo: String) -> Binding<Double> {
+        Binding(
+            get: { Double(answers[saveTo] ?? "") ?? 0 },
+            set: { answers[saveTo] = String(format: "%g", $0) }
+        )
+    }
+
+    private func boolean(_ saveTo: String) -> Binding<Bool> {
+        Binding(
+            get: { answers[saveTo] == "true" },
+            set: { answers[saveTo] = $0 ? "true" : "false" }
+        )
+    }
+
+    /// ISO 8601, because that is what the schema's `date` variables carry and
+    /// what a condition downstream compares against.
+    private func date(_ saveTo: String, kind: String) -> Binding<Date> {
+        Binding(
+            get: {
+                guard let raw = answers[saveTo], !raw.isEmpty else { return Date() }
+                return Self.isoFormatter.date(from: raw)
+                    ?? Self.timeFormatter.date(from: raw)
+                    ?? Date()
+            },
+            set: { answers[saveTo] = kind == "time"
+                ? Self.timeFormatter.string(from: $0)
+                : Self.isoFormatter.string(from: $0) }
+        )
+    }
+
+    /// A date picker's presentation, chosen without unifying two style types.
+    private struct WheelIfAsked: ViewModifier {
+        let wheel: Bool
+        func body(content: Content) -> some View {
+            // `.wheel` is an iOS style; the package also builds for macOS, where
+            // asking for it does not compile at all.
+            #if os(iOS)
+            if wheel {
+                content.datePickerStyle(.wheel)
+            } else {
+                content.datePickerStyle(.compact)
+            }
+            #else
+            content
+            #endif
+        }
+    }
+
+    private static let isoFormatter = ISO8601DateFormatter()
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "HH:mm"
+        return f
+    }()
 
     /// Writes go through the same `answers` the layout reads, so a keystroke
     /// re-solves the screen — which is what makes a field redden the moment it

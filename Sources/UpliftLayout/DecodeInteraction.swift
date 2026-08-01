@@ -60,15 +60,60 @@ extension LayoutDecoder {
             // validation resolves it: a box carrying `behavior.input` claims
             // the input beneath it, because the input has no edge of its own.
             if let saveTo = (raw["bind"] as? [String: Any])?["save_to"] as? String {
+                let p = raw["props"] as? [String: Any]
                 target.input = InputBehavior(
                     saveTo: saveTo,
                     kind: i["kind"] as? String ?? "text",
-                    placeholder: (raw["props"] as? [String: Any])?["placeholder"]
-                        .map { localized($0, input) },
-                    secure: (i["secure"] as? Bool) ?? false
+                    placeholder: p?["placeholder"].map { localized($0, input) },
+                    secure: (i["secure"] as? Bool) ?? false,
+                    min: (p?["min"] as? NSNumber)?.doubleValue,
+                    max: (p?["max"] as? NSNumber)?.doubleValue,
+                    step: (p?["step"] as? NSNumber)?.doubleValue,
+                    variant: p?["variant"] as? String
                 )
             }
         }
+        // The sealed leaves. Their behaviour is their TYPE — none of them
+        // carries `behavior.tap` — so each is claimed here or not at all.
+        let saveTo = (raw["bind"] as? [String: Any])?["save_to"] as? String
+        let props = raw["props"] as? [String: Any]
+        switch raw["type"] as? String {
+        case "photo_upload":
+            if let saveTo {
+                target.photoUpload = PhotoUploadBehavior(
+                    saveTo: saveTo,
+                    source: props?["source"] as? String ?? "both",
+                    shape: props?["shape"] as? String ?? "square"
+                )
+            }
+        case "signin":
+            if let saveTo {
+                let listed = (props?["providers"] as? [[String: Any]]) ?? []
+                var labels: [String: String] = [:]
+                for entry in listed {
+                    guard let id = entry["provider"] as? String, entry["label"] != nil else { continue }
+                    labels[id] = localized(entry["label"], input)
+                }
+                target.signIn = SignInBehavior(
+                    saveTo: saveTo,
+                    providers: listed.compactMap { $0["provider"] as? String },
+                    labels: labels,
+                    appearance: props?["appearance"] as? String ?? "auto",
+                    advanceOnSuccess: (props?["advance_on_success"] as? Bool) ?? true
+                )
+            }
+        case "permission":
+            if let saveTo {
+                target.permission = PermissionBehavior(
+                    saveTo: saveTo,
+                    permission: props?["permission"] as? String ?? "notifications",
+                    advanceOnResult: (props?["advance_on_result"] as? Bool) ?? true
+                )
+            }
+        default:
+            break
+        }
+
         if target.isInteractive { map.targets[path] = target }
 
         for (index, child) in ((raw["children"] as? [[String: Any]]) ?? []).enumerated() {

@@ -257,10 +257,42 @@ public final class FlowSession: ObservableObject {
                 jumpTo(String(action.dropFirst(3)))
             } else if action.hasPrefix("end:") {
                 complete(String(action.dropFirst(4)))
+            } else if action.hasPrefix("set:") {
+                setLiteral(String(action.dropFirst(4)))
             } else {
                 emitCustom(action)
             }
         }
+    }
+
+    /// `set:<var>=<value>` — write a literal to a declared variable.
+    ///
+    /// The action that makes a "choose this and move on" card possible: a tab
+    /// that both selects itself and sets the plan its panel sells, a card that
+    /// answers a question by being tapped. It does NOT navigate, so it composes
+    /// with whatever else the node's action list carries.
+    ///
+    /// The value is typed from the DECLARATION, not guessed from the text:
+    /// `set:count=3` on a number variable must not store the string "3", or
+    /// every later comparison against it fails.
+    private func setLiteral(_ assignment: String) {
+        guard let split = assignment.firstIndex(of: "=") else { return }
+        let name = String(assignment[assignment.startIndex..<split])
+        let raw = String(assignment[assignment.index(after: split)...])
+        guard !name.isEmpty else { return }
+
+        let declared = flow.variables.first { $0.name == name }?.type
+        let value: JSONValue
+        switch declared {
+        case .number:
+            guard let n = Double(raw) else { return }
+            value = .number(n)
+        case .boolean:
+            value = .bool(raw == "true")
+        default:
+            value = .string(raw)
+        }
+        setVariable(name, value)
     }
 
     private func jumpTo(_ screenId: String) {

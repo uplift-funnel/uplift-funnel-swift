@@ -209,6 +209,75 @@ final class NativeLeafAndStepTests: XCTestCase {
         XCTAssertEqual(hero.rect.y, -(51 + 44), accuracy: 0.01)
     }
 
+    // MARK: - the sealed leaves answer a tap
+
+    private func targets(_ root: [String: Any]) -> InteractionMap {
+        LayoutDecoder.interactions(flow: ["screens": [["root": root]]], screenIndex: 0)
+    }
+
+    func testAPhotoFrameClaimsItsTapAndCarriesWhatThePickerNeeds() {
+        let map = targets([
+            "type": "box",
+            "children": [[
+                "type": "photo_upload",
+                "bind": ["save_to": "selfie"],
+                "props": ["shape": "circle", "source": "camera"],
+            ]],
+        ])
+        let photo = map.handler(for: "0")?.photoUpload
+        XCTAssertEqual(photo?.saveTo, "selfie")
+        XCTAssertEqual(photo?.shape, "circle")
+        XCTAssertEqual(photo?.source, "camera")
+    }
+
+    func testASignInStackListsItsProvidersInOrder() {
+        let map = targets([
+            "type": "box",
+            "children": [[
+                "type": "signin",
+                "bind": ["save_to": "account"],
+                "props": [
+                    "providers": [["provider": "apple"], ["provider": "email", "label": "Use email"]],
+                    "advance_on_success": true,
+                ],
+            ]],
+        ])
+        let signIn = map.handler(for: "0")?.signIn
+        XCTAssertEqual(signIn?.providers, ["apple", "email"])
+        XCTAssertEqual(signIn?.labels["email"], "Use email")
+        XCTAssertTrue(signIn?.advanceOnSuccess ?? false)
+    }
+
+    func testAPermissionRowNamesThePermissionItAsksFor() {
+        let map = targets([
+            "type": "box",
+            "children": [[
+                "type": "permission",
+                "bind": ["save_to": "reminders"],
+                "props": ["permission": "notifications", "advance_on_result": true],
+            ]],
+        ])
+        XCTAssertEqual(map.handler(for: "0")?.permission?.permission, "notifications")
+        XCTAssertEqual(map.handler(for: "0")?.permission?.saveTo, "reminders")
+    }
+
+    func testASliderCarriesTheRangeItCannotBeBuiltWithout() {
+        let map = targets([
+            "type": "box",
+            "children": [[
+                "type": "input",
+                "bind": ["save_to": "spend"],
+                "behavior": ["input": ["kind": "slider"]],
+                "props": ["min": 400, "max": 9000, "step": 100],
+            ]],
+        ])
+        let input = map.handler(for: "0")?.input
+        XCTAssertEqual(input?.kind, "slider")
+        XCTAssertEqual(input?.min, 400)
+        XCTAssertEqual(input?.max, 9000)
+        XCTAssertEqual(input?.step, 100)
+    }
+
     // MARK: - which step of the sequence a screen is
 
     private func stepScreen(_ id: String, of sequence: String?) -> [String: Any] {
