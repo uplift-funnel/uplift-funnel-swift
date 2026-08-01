@@ -59,6 +59,12 @@ public struct UpliftFunnelProduct: Sendable {
     /// Explicit "per week" price string — wins over the derived value.
     public let pricePerWeek: String?
 
+    /// The savings phrase a plan card's badge shows, in your own words and your
+    /// own language ("Save 44%", "%44 tasarruf"). Only you can localize it, so
+    /// when it is absent the SDK derives an English "Save NN%" from
+    /// `originalPrice` and `priceAmount`, and shows nothing if it cannot.
+    public let savings: String?
+
     public init(
         id: String,
         price: String,
@@ -69,7 +75,8 @@ public struct UpliftFunnelProduct: Sendable {
         trialEligible: Bool? = nil,
         originalPrice: String? = nil,
         pricePerMonth: String? = nil,
-        pricePerWeek: String? = nil
+        pricePerWeek: String? = nil,
+        savings: String? = nil
     ) {
         self.id = id
         self.price = price
@@ -81,6 +88,67 @@ public struct UpliftFunnelProduct: Sendable {
         self.originalPrice = originalPrice
         self.pricePerMonth = pricePerMonth
         self.pricePerWeek = pricePerWeek
+        self.savings = savings
+    }
+
+    /// The five strings a `behavior.product` box scopes as `{{product.*}}` for
+    /// everything beneath it.
+    ///
+    /// Distinct from `toVariables()`, which publishes the flat
+    /// `<field>.<id>` namespace at session start. Both exist because a plan
+    /// card composed of ordinary nodes has no way to name its own product —
+    /// the binding is on the box, and the text inside it just says
+    /// `{{product.price}}`.
+    ///
+    /// A key with nothing behind it maps to `""` and draws as nothing. It must
+    /// never draw as `{{product.price}}`; see `interpolate` in `Decode.swift`.
+    func toScopedStrings() -> [String: String] {
+        var out = ["price": price, "period": period?.rawValue ?? ""]
+        // "7-day", matching the placeholder the dashboard preview substitutes,
+        // so an authored "Start your {{product.trial}} trial" reads the same in
+        // the editor and on the phone. English; a localized flow should write
+        // the phrase itself and use `trial_days.<id>` for the number.
+        out["trial"] = trialDays.map { "\($0)-day" } ?? ""
+        out["original_price"] = originalPrice ?? ""
+        out["savings"] = savings ?? derivedSavings() ?? ""
+        return out
+    }
+
+    /// "Save 44%" from the two prices, or nil when either is unusable.
+    private func derivedSavings() -> String? {
+        guard let now = priceAmount,
+              let originalPrice,
+              let before = Self.amount(in: originalPrice),
+              before > 0, now < before
+        else { return nil }
+        let percent = Int((1 - now / before) * 100 + 0.5)
+        guard percent > 0 else { return nil }
+        return "Save \(percent)%"
+    }
+
+    /// The number inside a formatted price string — "₺1.899,99" → 1899.99.
+    ///
+    /// Whichever of `,` / `.` appears LAST is the decimal separator; anything
+    /// earlier is grouping. Same rule as `derived(divisor:when:)` below, which
+    /// reads it off `price` for the opposite purpose.
+    static func amount(in text: String) -> Double? {
+        let digits = text.filter { $0.isNumber || $0 == "," || $0 == "." }
+        guard !digits.isEmpty else { return nil }
+        let lastComma = digits.range(of: ",", options: .backwards)?.lowerBound
+        let lastDot = digits.range(of: ".", options: .backwards)?.lowerBound
+        let decimal: Character?
+        switch (lastComma, lastDot) {
+        case (let c?, let d?): decimal = c > d ? "," : "."
+        case (.some, nil): decimal = ","
+        case (nil, .some): decimal = "."
+        default: decimal = nil
+        }
+        var normalized = ""
+        for ch in digits {
+            if ch.isNumber { normalized.append(ch) }
+            else if ch == decimal { normalized.append(".") }
+        }
+        return Double(normalized)
     }
 
     /// The `<field>.<id>` variables this product contributes at session
@@ -132,6 +200,12 @@ public struct UpliftFunnelProduct: Sendable {
         if comma { n = n.replacingOccurrences(of: ".", with: ",") }
         return prefix + n + suffix
     }
+}
+
+/// Store data per product ref, in the shape the renderer scopes `{{product.*}}`
+/// from — see `LayoutInput.products`.
+func productScope(_ products: [String: UpliftFunnelProduct]) -> [String: [String: String]] {
+    products.mapValues { $0.toScopedStrings() }
 }
 
 /// Builds the merged session-start variable map for `products`, keyed by

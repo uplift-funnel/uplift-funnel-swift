@@ -27,16 +27,58 @@ extension LayoutDecoder {
         return map
     }
 
+    /// The `on_complete` action of a countdown on this screen that has reached
+    /// zero, or nil while one is still running or the screen has none.
+    ///
+    /// Walks the raw document for the same reason `interactions` does, and asks
+    /// `countdownVars` rather than recomputing the deadline, so "is it done"
+    /// has exactly one definition and the token an author gates on and the
+    /// action the engine fires can never disagree.
+    ///
+    /// Without this the field was inert: `behavior.countdown.on_complete` has
+    /// been in the schema, in the templates and in served documents the whole
+    /// time, and no renderer ever fired it — a loading screen with no button
+    /// hung until the user force-quit.
+    public static func countdownComplete(
+        flow: [String: Any], screenIndex: Int, input: LayoutInput
+    ) -> String? {
+        guard let screens = flow["screens"] as? [[String: Any]],
+              screens.indices.contains(screenIndex),
+              let root = screens[screenIndex]["root"] as? [String: Any]
+        else { return nil }
+
+        var found: String?
+        func walk(_ node: [String: Any]) {
+            guard found == nil else { return }
+            if let spec = (node["behavior"] as? [String: Any])?["countdown"] as? [String: Any],
+               let action = spec["on_complete"] as? String,
+               !action.isEmpty,
+               countdownVars(spec, input: input)["countdown.done"] != nil {
+                found = action
+                return
+            }
+            for child in (node["children"] as? [[String: Any]]) ?? [] { walk(child) }
+        }
+        walk(root)
+        return found
+    }
+
     private static func collect(
         _ raw: [String: Any], path: String, input: LayoutInput, into map: inout InteractionMap
     ) {
         let behavior = raw["behavior"] as? [String: Any]
         if let g = behavior?["group"] as? [String: Any], let name = g["name"] as? String {
+            // `mode`, not `multi`. The schema has only ever emitted
+            // `behavior.group.mode: "single" | "multi"`; reading a `multi`
+            // boolean that no document contains meant every multi-select group
+            // decoded as single and each tap replaced the last answer.
             map.groups[name] = GroupBehavior(
                 name: name,
                 autoAdvance: (g["auto_advance"] as? Bool) ?? false,
-                multi: (g["multi"] as? Bool) ?? false,
-                saveTo: (raw["bind"] as? [String: Any])?["save_to"] as? String
+                multi: (g["mode"] as? String) == "multi",
+                saveTo: (raw["bind"] as? [String: Any])?["save_to"] as? String,
+                min: (g["min"] as? NSNumber)?.intValue,
+                max: (g["max"] as? NSNumber)?.intValue
             )
         }
 

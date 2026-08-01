@@ -70,4 +70,74 @@ final class ProductsTests: XCTestCase {
         XCTAssertEqual(vars["price.a"], "$2")
         XCTAssertEqual(vars["price.b"], "$3")
     }
+
+    // MARK: - the scope a plan card reads
+
+    /// The `{{product.*}}` namespace, which is a DIFFERENT map from the flat
+    /// `<field>.<id>` variables above. Both exist because a plan card composed
+    /// of ordinary boxes has no way to name its own product: the binding is on
+    /// the box and the text inside it just says `{{product.price}}`.
+    func testScopedStringsCoverEveryTokenTheDecoderPublishes() {
+        let scope = UpliftFunnelProduct(
+            id: "yearly", price: "$59.99", priceAmount: 59.99, period: .year,
+            trialDays: 7, originalPrice: "$89.99"
+        ).toScopedStrings()
+        XCTAssertEqual(scope["price"], "$59.99")
+        XCTAssertEqual(scope["period"], "year")
+        XCTAssertEqual(scope["trial"], "7-day")
+        XCTAssertEqual(scope["original_price"], "$89.99")
+        XCTAssertEqual(scope["savings"], "Save 33%")
+    }
+
+    /// Every key is present even when the product carries nothing for it, so
+    /// the token resolves to an empty string rather than falling through to the
+    /// literal braces. A card with no trial draws no trial; it does not draw
+    /// `{{product.trial}}`.
+    func testAThinProductStillFillsEveryKey() {
+        let scope = UpliftFunnelProduct(id: "basic", price: "$1").toScopedStrings()
+        XCTAssertEqual(scope["price"], "$1")
+        for key in ["period", "trial", "original_price", "savings"] {
+            XCTAssertEqual(scope[key], "", "\(key) should be present and empty")
+        }
+    }
+
+    /// Only the host can localize a savings phrase, so an explicit one wins.
+    func testAnExplicitSavingsPhraseWinsOverTheDerivedOne() {
+        let scope = UpliftFunnelProduct(
+            id: "yearly", price: "₺600,00", priceAmount: 600, originalPrice: "₺1.200,00",
+            savings: "%50 tasarruf"
+        ).toScopedStrings()
+        XCTAssertEqual(scope["savings"], "%50 tasarruf")
+    }
+
+    func testSavingsIsDerivedThroughACommaDecimal() {
+        let scope = UpliftFunnelProduct(
+            id: "yearly", price: "₺600,00", priceAmount: 600, originalPrice: "₺1.200,00"
+        ).toScopedStrings()
+        XCTAssertEqual(scope["savings"], "Save 50%")
+    }
+
+    func testNoSavingsWhenTheDiscountIsNotReal() {
+        // Original missing, original unparseable, and a "discount" that is not
+        // one — none of which should invent a badge.
+        XCTAssertEqual(
+            UpliftFunnelProduct(id: "a", price: "$5", priceAmount: 5).toScopedStrings()["savings"], "")
+        XCTAssertEqual(
+            UpliftFunnelProduct(id: "a", price: "$5", priceAmount: 5, originalPrice: "free")
+                .toScopedStrings()["savings"], "")
+        XCTAssertEqual(
+            UpliftFunnelProduct(id: "a", price: "$5", priceAmount: 5, originalPrice: "$4")
+                .toScopedStrings()["savings"], "")
+    }
+
+    /// The map the renderer is handed, keyed by the ref a `behavior.product`
+    /// names. Nothing built this until now — the renderer's `products` property
+    /// was declared, passed down, and never once assigned.
+    func testProductScopeIsKeyedByRef() {
+        let scope = productScope([
+            "com.app.annual": UpliftFunnelProduct(id: "com.app.annual", price: "$59.99", period: .year)
+        ])
+        XCTAssertEqual(scope["com.app.annual"]?["price"], "$59.99")
+        XCTAssertEqual(scope["com.app.annual"]?["period"], "year")
+    }
 }

@@ -183,6 +183,13 @@ struct PrimitiveScreenHost: View {
               screens.indices.contains(index),
               let root = screens[index]["root"] as? [String: Any] else { return nil }
         let answers = stringifyVariables(session.variables)
+        // The group's own name is not necessarily where its answer lives, and a
+        // multi group's answer is a JSON array — the same two rules the
+        // `selected` state resolves by. Getting them wrong here is not a
+        // cosmetic bug like a card that fails to highlight: this is the ref
+        // that gets CHARGED, and the fallback it silently used instead is
+        // whichever plan the author marked `default`.
+        let groups = LayoutDecoder.interactions(flow: doc, screenIndex: index).groups
 
         var fallback: String?
         var found: String?
@@ -191,7 +198,8 @@ struct PrimitiveScreenHost: View {
             if let ref = (behavior?["product"] as? [String: Any])?["ref"] as? String {
                 if let s = behavior?["select"] as? [String: Any],
                    let group = s["group"] as? String, let value = s["value"] as? String {
-                    if answers[group] == value { found = found ?? ref }
+                    let key = groups[group]?.saveTo ?? group
+                    if answerHolds(answers[key], value) { found = found ?? ref }
                     if (s["default"] as? Bool) == true { fallback = fallback ?? ref }
                 } else {
                     fallback = fallback ?? ref
@@ -201,6 +209,14 @@ struct PrimitiveScreenHost: View {
         }
         walk(root)
         return found ?? fallback
+    }
+
+    /// Whether an answer holds `value`: a scalar equals it, and the canonical
+    /// multi-select encoding (`["a","b"]`) contains it.
+    private func answerHolds(_ answer: String?, _ value: String) -> Bool {
+        guard let answer else { return false }
+        guard answer.hasPrefix("[") else { return answer == value }
+        return decodeList(answer).contains(value)
     }
 
     // MARK: - images
@@ -214,22 +230,19 @@ struct PrimitiveScreenHost: View {
     private func loadImages() async {
         let doc = primFlow.raw.flowDictionary
         let index = session.flow.screens.firstIndex { $0.id == screen.id } ?? 0
-        guard let screens = doc["screens"] as? [[String: Any]],
-              screens.indices.contains(index),
-              let root = screens[index]["root"] as? [String: Any] else { return }
-
-        var urls: Set<String> = []
-        func walk(_ node: [String: Any]) {
-            if let url = (node["props"] as? [String: Any])?["url"] as? String, !url.isEmpty {
-                urls.insert(url)
-            }
-            if let fill = (node["style"] as? [String: Any])?["fill"] as? [String: Any],
-               let url = fill["url"] as? String, !url.isEmpty {
-                urls.insert(url)
-            }
-            for child in (node["children"] as? [[String: Any]]) ?? [] { walk(child) }
-        }
-        walk(root)
+        // Resolved by the decoder, not re-walked here: a URL that interpolates
+        // an answer has to be fetched under the string the paint will ask for.
+        let answers = stringifyVariables(session.variables)
+        let urls = LayoutDecoder.imageURLs(
+            flow: doc,
+            screenIndex: index,
+            locale: resolveLocale(
+                locales: primFlow.locales, defaultLocale: primFlow.defaultLocale
+            ),
+            input: LayoutInput(
+                selections: answers, variables: answers, products: products
+            )
+        )
 
         // Fetched CONCURRENTLY and applied in ONE assignment.
         //

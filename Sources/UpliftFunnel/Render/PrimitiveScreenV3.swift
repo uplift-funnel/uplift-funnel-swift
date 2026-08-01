@@ -52,6 +52,9 @@ struct PrimitiveScreenV3: View {
     /// flashing a deadline long past.
     @State private var clock = (now: 0.0, entered: 0.0)
 
+    /// Whether this screen's countdown has already raised its `on_complete`.
+    @State private var firedCountdown = false
+
     /// Only a screen that carries one pays for a timer.
     private var ticks: Bool {
         cache.hasCountdown(screenIndex: screenIndex) {
@@ -284,12 +287,30 @@ struct PrimitiveScreenV3: View {
             }
             .onReceive(tick) { date in
                 clock.now = date.timeIntervalSince1970 * 1000
+                fireCountdownIfComplete()
             }
         } else {
             // A screen that will not lay out is a bug worth seeing, not a blank
             // the user silently stares at.
             Color.clear.overlay(Text("layout failed").font(.footnote).foregroundColor(.secondary))
         }
+    }
+
+    /// Fire a finished countdown's `on_complete`, at most once per screen.
+    ///
+    /// The tick runs four times a second, so without the latch a 2.6s loading
+    /// screen would raise its action on every tick from 2.6s onward. The latch
+    /// is a local guard against repeats within one screen; correctness ACROSS
+    /// screens is the engine's — `FlowSession.handleAction` already drops an
+    /// action raised by a screen the user has since left, because advancing is
+    /// not idempotent and a stale timer would otherwise skip the next screen.
+    private func fireCountdownIfComplete() {
+        guard !firedCountdown,
+              let action = LayoutDecoder.countdownComplete(
+                flow: flow, screenIndex: screenIndex, input: input)
+        else { return }
+        firedCountdown = true
+        onAction(action)
     }
 
     /// Ask for whatever a sealed `permission` node on this screen covers.
