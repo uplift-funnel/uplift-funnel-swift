@@ -825,8 +825,7 @@
       },
       "top_bar": {
         "back": false,
-        "close": false,
-        "progress": "none"
+        "close": false
       },
       "transitions": [
         {

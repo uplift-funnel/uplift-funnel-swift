@@ -151,12 +151,19 @@ final class LayoutParityTests: XCTestCase {
         // which resolves against exactly this box, sat 24pt low on every screen
         // that has one.
         let recorded = try XCTUnwrap(base["viewport"] as? [String: Any], "\(shot): no viewport")
+        // The SAFE TOP comes from the recording too, for the same reason the
+        // viewport does. It is not the status bar alone: it is the status bar
+        // PLUS the chrome row, which is 44pt when the top bar carries an
+        // affordance and 20pt when it only reserves the strip — 95 and 71.
+        // Hardcoding 51 put every node under a bleeding hero 20pt out, a
+        // whole-screen shift that reads as a solver fault and is really the two
+        // runs laying out different screens.
         let viewport = Viewport(
             size: Size2D(
                 width: (recorded["width"] as? NSNumber)?.doubleValue ?? 390,
                 height: (recorded["height"] as? NSNumber)?.doubleValue ?? 743
             ),
-            safeTop: 51
+            safeTop: (base["safeTop"] as? NSNumber)?.doubleValue ?? 51
         )
 
         let solved = try FlexSolver(measurer: override ?? (try measurer(for: shot)))
