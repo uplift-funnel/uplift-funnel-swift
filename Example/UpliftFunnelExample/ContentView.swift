@@ -1,83 +1,48 @@
 import SwiftUI
 import UpliftFunnel
 
-/// Stand-in for a real OS dialog / auth sheet / purchase sheet.
+/// Demo host for the UpliftFunnel SDK.
 ///
-/// A handler `await`s `ask(_:)`, which suspends until the user taps a button —
-/// so BOTH branches of a flow are walkable (deny a permission, cancel a
-/// purchase) without wiring a real integration first. Mirrors the Flutter
-/// example's `_confirm`.
-@MainActor
-final class DemoPrompt: ObservableObject {
-    @Published var isPresented = false
-    @Published private(set) var message = ""
-    @Published private(set) var confirmLabel = "Allow"
-    /// Info-only prompts (the link handler) get a single OK button.
-    @Published private(set) var isInfo = false
-
-    private var continuation: CheckedContinuation<Bool, Never>?
-
-    /// Suspends until the user answers. A second ask while one is still open
-    /// resolves the first as denied rather than dropping its continuation.
-    func ask(_ message: String, confirmLabel: String = "Allow") async -> Bool {
-        resolve(false)
-        self.message = message
-        self.confirmLabel = confirmLabel
-        isInfo = false
-        isPresented = true
-        return await withCheckedContinuation { self.continuation = $0 }
-    }
-
-    /// Fire-and-forget notice — the analog of the Flutter demo's snackbar.
-    func info(_ message: String) {
-        resolve(false)
-        self.message = message
-        isInfo = true
-        isPresented = true
-    }
-
-    /// Idempotent: resuming twice would trap, so the continuation is cleared
-    /// as it resolves.
-    func resolve(_ granted: Bool) {
-        isPresented = false
-        continuation?.resume(returning: granted)
-        continuation = nil
-    }
-}
-
-/// Demo host for the UpliftFunnel SDK against a local `pnpm dev:api`
-/// (http://localhost:3000). Paste a dev public key (`fnl_pk_…` — printed to
-/// /tmp/funnel-demo-keys by the API seeder), enter a flow key, hit Start.
+/// It exists to show the seam between a flow and the app around it: every host
+/// handoff the engine can ask for, the store catalog a paywall reads its prices
+/// from, the identity and analytics calls, and an A/B run.
+///
+/// Paste a public key (`fnl_pk_…` from **SDK & API** in the dashboard), enter a
+/// flow key, hit Start. Requests go to the production API unless the build was
+/// launched with a `UPLIFT_SERVER_URL` — see `DemoServer`.
 struct ContentView: View {
     @StateObject private var prompt = DemoPrompt()
 
     @AppStorage("demo.apiKey") private var apiKey = ""
-    @AppStorage("demo.serverUrl") private var serverUrl = "http://localhost:3000"
-    @AppStorage("demo.flowKey") private var flowKey = "cal-ai-clone"
+    @AppStorage("demo.flowKey") private var flowKey = ""
 
     @State private var isExperiment = false
     @State private var forceRefresh = false
+    @State private var trackingEnabled = true
     @State private var configured = false
     @State private var presentingFlow = false
-    @State private var lastResult: String = "—"
+    @State private var lastResult = "—"
 
     var body: some View {
         NavigationView {
             Form {
-                Section("Server") {
-                    TextField("Server URL", text: $serverUrl)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    TextField("API key (fnl_pk_…)", text: $apiKey)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                }
                 Section("Flow") {
+                    TextField("Public key (fnl_pk_…)", text: $apiKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                     TextField("Flow key", text: $flowKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    Toggle("Experiment", isOn: $isExperiment)
+                    Toggle("Run as an A/B experiment", isOn: $isExperiment)
                     Toggle("Force refresh", isOn: $forceRefresh)
+                    // The single-parameter closure, not the iOS 17 two-value
+                    // one: this target deploys to iOS 16.
+                    Toggle("Analytics", isOn: $trackingEnabled)
+                        .onChange(of: trackingEnabled) { enabled in
+                            guard configured else { return }
+                            UpliftFunnel.setTrackingEnabled(enabled)
+                            prompt.note("tracking \(enabled ? "enabled" : "disabled")")
+                        }
                 }
                 Section {
                     Button("Start flow") {
@@ -97,6 +62,20 @@ struct ContentView: View {
                             .font(.footnote.monospaced())
                     }
                 }
+                identitySection
+                Section("Handoff log") {
+                    if prompt.log.isEmpty {
+                        Text("Nothing yet. Start a flow and tap through it — "
+                             + "every handoff the engine asks for shows up here.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(prompt.log, id: \.self) { line in
+                            Text(line).font(.footnote.monospaced())
+                        }
+                        Button("Clear", role: .destructive) { prompt.clearLog() }
+                    }
+                }
             }
             .navigationTitle("Uplift Funnel")
         }
@@ -105,13 +84,60 @@ struct ContentView: View {
         }
         .task {
             // CLI/E2E hook: `simctl launch ... -demo.autostart YES
-            // -demo.apiKey fnl_pk_… -demo.flowKey cal-ai-clone` — the
-            // -demo.* arguments land in the UserDefaults argument domain,
-            // overriding @AppStorage, and autostart opens the flow directly.
+            // -demo.apiKey fnl_pk_… -demo.flowKey cal-ai-clone` — the -demo.*
+            // arguments land in the UserDefaults argument domain, overriding
+            // @AppStorage, and autostart opens the flow directly.
             if UserDefaults.standard.bool(forKey: "demo.autostart"),
                !apiKey.isEmpty, !flowKey.isEmpty {
                 await configureSDK()
                 presentingFlow = true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var identitySection: some View {
+        Section("Identity & analytics") {
+            Button("Identify") {
+                Task {
+                    await configureSDK()
+                    try? await UpliftFunnel.identify(
+                        userId: "demo-user-1",
+                        attributes: ["plan": .string("free"),
+                                     "signup_source": .string("demo")])
+                    prompt.note("identify · demo-user-1")
+                }
+            }
+            Button("Reset identity") {
+                Task {
+                    await configureSDK()
+                    try? await UpliftFunnel.resetIdentity()
+                    prompt.note("reset identity")
+                }
+            }
+            Button("Track event") {
+                Task {
+                    await configureSDK()
+                    try? await UpliftFunnel.track(
+                        "demo_button_tapped",
+                        properties: ["where": .string("content_view")])
+                    prompt.note("track · demo_button_tapped")
+                }
+            }
+            Button("Set attribution") {
+                Task {
+                    await configureSDK()
+                    try? await UpliftFunnel.setAttribution(
+                        ["network": "demo", "campaign": "readme"])
+                    prompt.note("attribution set")
+                }
+            }
+            Button("Flush events") {
+                Task {
+                    await configureSDK()
+                    await UpliftFunnel.flushEvents()
+                    prompt.note("events flushed")
+                }
             }
         }
     }
@@ -123,12 +149,22 @@ struct ContentView: View {
                 UpliftFunnelFlowView.experiment(
                     flowKey,
                     onCompleted: handleResult,
-                    forceRefresh: forceRefresh)
+                    userVariables: demoUserVariables,
+                    forceRefresh: forceRefresh,
+                    loadingView: { AnyView(DemoLoadingView()) },
+                    errorView: { error, retry in
+                        AnyView(DemoErrorView(error: error, retry: retry))
+                    })
             } else {
                 UpliftFunnelFlowView(
                     flowKey: flowKey,
                     onCompleted: handleResult,
-                    forceRefresh: forceRefresh)
+                    userVariables: demoUserVariables,
+                    forceRefresh: forceRefresh,
+                    loadingView: { AnyView(DemoLoadingView()) },
+                    errorView: { error, retry in
+                        AnyView(DemoErrorView(error: error, retry: retry))
+                    })
             }
         }
         // Handlers only ever fire while a flow is on screen, so the alert
@@ -146,88 +182,69 @@ struct ContentView: View {
         }
     }
 
+    /// Anything the app already knows. Available to the flow as `{{source}}` /
+    /// `{{tier}}` and to its transition conditions.
+    private var demoUserVariables: [String: JSONValue] {
+        ["source": .string("demo"), "tier": .string("free")]
+    }
+
     private func handleResult(_ result: UpliftFunnelFlowResult) {
         lastResult = "\(result.endReason) · \(result.source.rawValue)\n"
             + result.variables
                 .map { "\($0.key)=\($0.value.stringifiedValue ?? $0.value.serializedString())" }
                 .sorted()
                 .joined(separator: "\n")
+        prompt.note("flow ended · \(result.endReason)")
         presentingFlow = false
     }
 
+    /// Configure once, then register the catalog and the handoffs.
+    ///
+    /// Order matters: `configure` starts the engine, and everything registered
+    /// afterwards is what a flow is allowed to ask the app for.
     private func configureSDK() async {
-        // Debug-only hook, set before configure.
-        UpliftFunnel.debugServerUrl = serverUrl.isEmpty ? nil : serverUrl
+        guard !configured else { return }
+        // Debug-only hook, and it has to be set before configure reads it.
+        UpliftFunnel.debugServerUrl = DemoServer.url
         await UpliftFunnel.configure(
             apiKey: apiKey,
-            appVersion: "1.0.0-example")
-        guard !configured else { return }
+            appVersion: "1.0.0-example",
+            trackingEnabled: trackingEnabled,
+            // Answers named here never leave the device in an event payload.
+            redactVariables: ["email"])
         configured = true
+        registerDemoHandoffs(prompt: prompt)
+        prompt.note("configured · \(DemoServer.url ?? "production")")
+    }
+}
 
-        // ── Native handoffs ──────────────────────────────────────────────
-        // The flow JSON declares WHAT happens (a signin gate, a permission
-        // ask, a paywall CTA, a Terms link); these handlers are HOW your app
-        // does it. Every one is optional, so you can wire them one at a time.
-        //
-        // This demo surfaces each as a confirm dialog rather than faking a
-        // success, so the deny/cancel branches are reachable too. In a real
-        // app you'd call the commented-out API instead.
-        UpliftFunnel.registerSignInHandler { provider in
-            // e.g. ASAuthorizationAppleIDProvider().createRequest() driven by
-            // an ASAuthorizationController when provider == "apple".
-            print("[example] sign in requested: \(provider)")
-            return await prompt.ask("Sign in with \(provider)?")
+/// A host-supplied loading state, replacing the SDK's default spinner.
+private struct DemoLoadingView: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+            Text("Fetching the flow…").font(.footnote).foregroundStyle(.secondary)
         }
-        UpliftFunnel.registerPermissionHandler { permission in
-            // e.g. UNUserNotificationCenter.current()
-            //        .requestAuthorization(options: [.alert, .badge, .sound])
-            print("[example] permission requested: \(permission)")
-            return await prompt.ask("Grant \(permission) permission?")
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// A host-supplied error state. `retry` re-runs the fetch; without it the user
+/// is stuck on whatever went wrong.
+private struct DemoErrorView: View {
+    let error: Error
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Could not load the flow").font(.headline)
+            Text(error.localizedDescription)
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Button("Try again", action: retry).buttonStyle(.borderedProminent)
         }
-        UpliftFunnel.registerPurchaseHandler { request in
-            // e.g. Purchases.shared.purchase(product:) (RevenueCat) or
-            // StoreKit's Product.purchase(). Map cancel/failure onto the
-            // matching PurchaseResult so the user stays on the paywall and
-            // analytics records the drop-off.
-            print("[example] purchase requested: plan=\(request.planId ?? "-") "
-                  + "product=\(request.productId ?? "-")")
-            let bought = await prompt.ask(
-                "Purchase \"\(request.productId ?? request.planId ?? "—")\" "
-                + "(plan \(request.planId ?? "—"))?",
-                confirmLabel: "Buy")
-            return bought ? .purchased : .cancelled
-        }
-        UpliftFunnel.registerRestoreHandler {
-            // e.g. Purchases.shared.restorePurchases() — return whether an
-            // active entitlement actually came back.
-            print("[example] restore requested")
-            return await prompt.ask("Restore purchases?", confirmLabel: "Restore")
-        }
-        UpliftFunnel.registerPhotoUploadHandler { request in
-            // e.g. PHPickerViewController honoring request.source, returning
-            // the picked asset's local path. Nil = the user backed out.
-            print("[example] photo requested: source=\(request.source) "
-                  + "shape=\(request.shape)")
-            let picked = await prompt.ask(
-                "Pick a photo (source \(request.source), \(request.shape))?",
-                confirmLabel: "Pick")
-            return picked ? "demo://photo" : nil
-        }
-        UpliftFunnel.registerLinkHandler { url in
-            // e.g. UIApplication.shared.open(parsed). The demo only reports
-            // it, so tapping Terms mid-flow doesn't kick you out of the app.
-            print("[example] open link: \(url)")
-            prompt.info("Would open \(url)")
-        }
-        // Fake catalog so {{price.X}} interpolation and plan_picker
-        // auto-binding light up.
-        UpliftFunnel.setProducts([
-            UpliftFunnelProduct(
-                id: "yearly_pro", price: "₺899,99", priceAmount: 899.99,
-                period: .year, trialDays: 7, trialEligible: true),
-            UpliftFunnelProduct(
-                id: "monthly_pro", price: "₺149,99", priceAmount: 149.99,
-                period: .month),
-        ])
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

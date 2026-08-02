@@ -11,7 +11,7 @@ it later without shipping an app update.
   degrades gracefully instead of breaking the screen.
 - **Analytics and A/B built in** — nothing is lost if the app is killed or the
   device is offline.
-- No third-party dependencies. iOS 15+, Swift Package Manager.
+- No third-party dependencies. iOS 16+, Swift Package Manager.
 
 ## Install
 
@@ -163,19 +163,27 @@ dashboard.
 
 ## Example app
 
-`Example/UpliftFunnelExample.xcodeproj` — a form to paste a dev key + flow
-key, then presents the flow full-screen. Against a local platform:
+`Example/UpliftFunnelExample.xcodeproj` — paste a public key and a flow key,
+hit Start. It wires every host handoff, the store catalog, `userVariables`,
+custom loading/error views, and the identity and analytics calls, so each one
+is visible while you walk a flow.
+
+**It has no server field.** The app talks to the production API; a debug build
+is pointed elsewhere from outside the UI, by `DemoServer`:
 
 ```bash
 cd ~/Documents/funnel-platform
 pnpm dev:api                    # Hono API on :3000
-cd apps/api && pnpm seed        # prints a fnl_pk_… dev key, seeds cal-ai-clone
+pnpm --filter funnel-api seed   # prints a fnl_pk_… dev key
 ```
 
-Simulator reaches the host's `http://localhost:3000` directly
-(`NSAllowsLocalNetworking` is set in the example's Info.plist).
+Then set `UPLIFT_SERVER_URL` on the run scheme (Product ▸ Scheme ▸ Edit Scheme
+▸ Run ▸ Arguments ▸ Environment Variables). The simulator reaches the host
+directly, and `NSAllowsLocalNetworking` in the example's Info.plist is what
+lets a cleartext loopback URL through.
 
-CLI/E2E launch without touching the UI:
+CLI/E2E launch without touching the UI — the same override, as a launch
+argument:
 
 ```bash
 xcrun simctl launch booted com.upliftfunnel.example \

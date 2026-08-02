@@ -24,7 +24,10 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<!-- Local dev: allow http://localhost while pointing at pnpm dev:api. -->
+	<!-- Loopback only, and only so a build launched with UPLIFT_SERVER_URL can
+	     reach an API on this machine. It permits nothing beyond it: cleartext
+	     to any real host stays blocked, and a release build cannot carry a
+	     debug server URL at all — UpliftFunnel traps on one. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
