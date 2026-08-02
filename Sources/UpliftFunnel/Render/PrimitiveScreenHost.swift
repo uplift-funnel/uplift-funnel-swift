@@ -43,6 +43,13 @@ struct PrimitiveScreenHost: View {
             // and a proxy inside that reports zero — which padded the chrome by
             // nothing and put the close button in the status bar.
             let safeTop = max(SafeArea.top, Double(geo.safeAreaInsets.top))
+            // The other end of the same problem, and the one nothing was
+            // reading. `SafeArea.bottom` existed and was never called: the body
+            // ran to the physical bottom of the display, so a footer pinned
+            // "24pt from the bottom" landed inside the home-indicator band on
+            // every notched device — while the dashboard preview, which does
+            // reserve it, showed the author a footer sitting clear of it.
+            let safeBottom = max(SafeArea.bottom, Double(geo.safeAreaInsets.bottom))
             let chrome = TopBarChrome.height(for: screenChrome(), canGoBack: canGoBack)
             VStack(spacing: 0) {
                 TopBarChrome(
@@ -68,7 +75,12 @@ struct PrimitiveScreenHost: View {
                     products: products,
                     size: CGSize(
                         width: geo.size.width,
-                        height: geo.size.height - chrome - safeTop
+                        height: ScreenBox.bodyHeight(
+                            display: geo.size.height,
+                            safeTop: safeTop,
+                            safeBottom: safeBottom,
+                            chrome: chrome
+                        )
                     ),
                     // The WHOLE band above the body: the status bar and the
                     // chrome row. `ignoreSafeArea` means the top of the
@@ -76,6 +88,8 @@ struct PrimitiveScreenHost: View {
                     // it sitting a chrome row short of it — the same gap the
                     // dashboard had until `--uf-safe-top` started including it.
                     safeTop: safeTop + chrome,
+                    // Paint-only: the body already excludes it.
+                    safeBottom: safeBottom,
                     // Identity, not content: the flow dictionary cannot be
                     // hashed, and its id plus version moves exactly when the
                     // document does.
@@ -91,6 +105,7 @@ struct PrimitiveScreenHost: View {
                 )
             }
             .padding(.top, safeTop)
+            .padding(.bottom, safeBottom)
         }
         .ignoresSafeArea()
         .task { await loadImages() }

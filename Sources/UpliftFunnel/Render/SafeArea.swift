@@ -49,3 +49,25 @@ enum SafeArea {
     static var bottom: Double { 0 }
     #endif
 }
+
+/// The box a screen is laid out into.
+///
+/// One line of arithmetic, and it lived inside a SwiftUI view body — where a
+/// test cannot reach it. That is how the bottom inset stayed missing: the body
+/// ran to the physical bottom of the display, a pinned footer resolved against
+/// that, and every notched device put the CTA under the home indicator while
+/// the dashboard preview showed it sitting clear. Nothing could have caught it,
+/// because nothing could call it.
+enum ScreenBox {
+    /// The body between the chrome and the home indicator.
+    ///
+    /// `chrome` is the top bar's row; `safeTop` and `safeBottom` are the
+    /// device's own insets. Clamped at zero so a short display with a tall
+    /// chrome yields an empty box rather than a negative one — a negative
+    /// height reaches the solver as a viewport nothing can be placed in.
+    static func bodyHeight(
+        display: Double, safeTop: Double, safeBottom: Double, chrome: Double
+    ) -> Double {
+        max(0, display - safeTop - safeBottom - chrome)
+    }
+}

@@ -21,6 +21,12 @@ struct PrimitiveScreenV3: View {
     let products: [String: [String: String]]
     let size: CGSize
     let safeTop: Double
+    /// The device inset BELOW the body, which the host has already taken out of
+    /// `size`. Nothing is laid out into it — a pinned footer stops above the
+    /// home indicator, which is the point — but the screen's own background
+    /// still has to reach the bottom of the display, or a dark paywall shows a
+    /// pale strip under it.
+    var safeBottom: Double = 0
     /// Identity of the document, for the model cache — the flow itself is
     /// `[String: Any]` and cannot be hashed.
     let flowVersion: String
@@ -206,26 +212,31 @@ struct PrimitiveScreenV3: View {
                 // SwiftUI, so a linear, a radial and an image all arrive the
                 // way the painter already knows how to draw them.
                 if let background = model.background {
+                    // Past every inset in BOTH directions: the band above the
+                    // body (status bar and chrome row) and the one below it
+                    // (home indicator). Only the body is laid out into; the
+                    // paint covers the display.
+                    let backgroundHeight = drawnHeight + safeTop + safeBottom
                     PrimitiveCanvas(
                         list: DisplayList(
-                            size: Size2D(width: size.width, height: drawnHeight + safeTop),
+                            size: Size2D(width: size.width, height: backgroundHeight),
                             items: [PaintItem(
                                 path: "__background",
                                 frame: Rect(
                                     x: 0, y: 0,
-                                    width: size.width, height: drawnHeight + safeTop
+                                    width: size.width, height: backgroundHeight
                                 ),
                                 style: background
                             )]
                         ),
                         painter: FramePainter(images: images),
-                        size: Size2D(width: size.width, height: drawnHeight + safeTop),
+                        size: Size2D(width: size.width, height: backgroundHeight),
                         // Paint only: a background that answered taps would take
                         // them from the content sitting on it.
                         hittable: [],
                         onTap: { _ in }
                     )
-                    .frame(width: size.width, height: drawnHeight + safeTop)
+                    .frame(width: size.width, height: backgroundHeight)
                     .padding(.top, -safeTop)
                     .allowsHitTesting(false)
                 }
