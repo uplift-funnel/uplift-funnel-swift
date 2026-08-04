@@ -263,10 +263,23 @@ public enum UpliftFunnel {
         let sessionId = session?.sessionId ?? s.ensureAppSessionId()
         let flowId = session?.flow.id
         let experiment = session?.experiment
-        guard let uploader = s.uploader else { return }
-        await uploader.enqueueCustom(
-            name: name, sessionId: sessionId, flowId: flowId,
-            properties: properties, experiment: experiment)
+        if let uploader = s.uploader {
+            await uploader.enqueueCustom(
+                name: name, sessionId: sessionId, flowId: flowId,
+                properties: properties, experiment: experiment)
+        }
+
+        // Call point 2 (spec 05 §Ne zaman çağrılır): a tracked event the server
+        // said it cares about. The allowlist comes from the server's own rules,
+        // so a new trigger about a new event starts working without a release —
+        // and every other `track()` costs nothing. The event rides along as a
+        // `recent_event` because it is very likely still in the upload queue,
+        // and a trigger about the thing that just happened should not have to
+        // wait for the next batch.
+        if let coordinator = s.triggers, coordinator.shouldEvaluate(after: name) {
+            await coordinator.evaluate(
+                reason: .tracked, recentEvents: [(name: name, at: Date())])
+        }
     }
 
     /// Fetch + start an onboarding by its `key`. Cache-first with
@@ -295,6 +308,7 @@ public enum UpliftFunnel {
         s.lastExperimentAssignment = nil
         let session = try s.session(
             fromJson: fetched.json,
+            flowKey: key,
             userVariables: userVariables,
             flowVersion: fetched.flowVersion)
         return FlowSessionStart(
@@ -358,6 +372,7 @@ public enum UpliftFunnel {
         s.lastExperimentAssignment = assignment
         let session = try s.session(
             fromJson: fetched.json,
+            flowKey: key,
             userVariables: userVariables,
             experiment: assignment)
         return FlowSessionStart(
@@ -413,6 +428,50 @@ public enum UpliftFunnel {
         guard let s = requireForRegistration("setProducts") else { return }
         s.products = Dictionary(
             products.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+    }
+
+    // MARK: - Triggers
+
+    /// Let the server decide when a flow appears, and hand the showing of it
+    /// to your app.
+    ///
+    /// Until this is called the SDK never asks: there would be nowhere to put
+    /// the answer, and an endpoint quietly called on every foreground after a
+    /// version bump is a behaviour change nobody asked for. Registering also
+    /// asks once, right away — a cold launch is the first of the three moments
+    /// worth asking at (spec 05).
+    ///
+    /// ```swift
+    /// UpliftFunnel.registerPresenter(self)
+    ///
+    /// func presentSheet(flowKey: String, dismissible: Bool) async -> Bool {
+    ///     sheetFlowKey = flowKey   // drives a .sheet in your view
+    ///     return true
+    /// }
+    /// ```
+    ///
+    /// The SDK holds the presenter weakly and never retains your view
+    /// controller.
+    public static func registerPresenter(_ presenter: UpliftPresenter) {
+        guard let s = requireForRegistration("registerPresenter") else { return }
+        s.ensureTriggers().register(presenter: presenter)
+        Task { await s.triggers?.evaluate(reason: .foreground) }
+    }
+
+    /// A slot came on screen. Called by `UpliftFunnelSlot`; hosts do not call
+    /// this directly.
+    static func attachSlot(_ slotId: String, sink: @escaping (UpliftTriggerDecision?) -> Void) {
+        guard let s = state else { return }
+        let coordinator = s.ensureTriggers()
+        let wasActive = coordinator.isActive
+        coordinator.attach(slot: slotId, sink: sink)
+        // The first slot placed is the same moment as the first presenter
+        // registered: there is now somewhere to put an answer.
+        if !wasActive { Task { await coordinator.evaluate(reason: .foreground) } }
+    }
+
+    static func detachSlot(_ slotId: String) {
+        state?.triggers?.detach(slot: slotId)
     }
 
     /// Register the app's restore-purchases handoff for the `restore`
@@ -746,6 +805,15 @@ final class FunnelState {
     private weak var lastProfileSession: FlowSession?
     private var lastProfileToken: UUID?
 
+    /// And a third, for the same reason: a trigger's outcome has to be
+    /// reported whether or not analytics is on. Consent governs telemetry, not
+    /// whether the server may know that the flow it opened was finished.
+    private weak var lastTriggerSession: FlowSession?
+    private var lastTriggerToken: UUID?
+
+    /// Trigger evaluation, or nil until a host gives it somewhere to present.
+    var triggers: TriggerCoordinator?
+
     /// Per-launch app-session id for `track` events fired outside a flow.
     private var appSessionId: String?
 
@@ -847,6 +915,42 @@ final class FunnelState {
         Task { _ = try? await session.data(for: request) }
     }
 
+    /// The trigger coordinator, created the first time a host gives it
+    /// somewhere to present.
+    ///
+    /// Lazy rather than built in `configure`, because "is anything listening"
+    /// is exactly the condition for asking at all — and because a host that
+    /// never registers a presenter should not pay for a coordinator, a
+    /// lifecycle observer, or a single request.
+    @discardableResult
+    func ensureTriggers() -> TriggerCoordinator {
+        if let triggers { return triggers }
+        let identity = identity
+        let bundleId = bundleId
+        let client = TriggerClient(config: TriggerClientConfig(
+            serverUrl: serverUrl,
+            apiKeyProvider: { identity.activeApiKey ?? "" },
+            bundleIdProvider: { bundleId },
+            urlSession: urlSession))
+        let coordinator = TriggerCoordinator(
+            client: client,
+            // The same subject the flow and experiment reads use: the
+            // identified user when there is one, the per-install anonymous id
+            // otherwise. A different answer here would mean the server decides
+            // for one person and the flow renders for another.
+            subjectIdProvider: { [weak self] in
+                self?.identity.userId ?? self?.identity.anonymousId ?? ""
+            },
+            sessionIdProvider: { [weak self] in
+                self?.lastBoundSession?.sessionId ?? self?.ensureAppSessionId() ?? ""
+            },
+            onProfileSnapshot: { [weak self] snapshot in
+                self?.profile.mergeSnapshot(snapshot)
+            })
+        triggers = coordinator
+        return coordinator
+    }
+
     func makeUploader() -> EventUploader {
         let identity = identity
         // Fixed at configure time (the uploader is rebuilt on every
@@ -901,6 +1005,7 @@ final class FunnelState {
 
     func session(
         fromJson json: String,
+        flowKey: String? = nil,
         userVariables: [String: JSONValue]? = nil,
         experiment: UpliftFunnelExperimentAssignment? = nil,
         flowVersion: Int? = nil
@@ -935,6 +1040,7 @@ final class FunnelState {
             experiment: experiment,
             flowVersion: flowVersion)
         bindUploader(to: session)
+        bindTriggers(to: session, flowKey: flowKey)
         return session
     }
 
@@ -989,6 +1095,31 @@ final class FunnelState {
         }
     }
 
+    /// Tell the trigger coordinator when a flow ends.
+    ///
+    /// Two jobs in one listener. A flow that a trigger opened reports what
+    /// became of it — without this the delivery log knows what was offered and
+    /// never what it was worth. And *any* flow ending is call point 3 (spec 05
+    /// §Ne zaman çağrılır): finishing onboarding is the moment the next thing
+    /// becomes appropriate.
+    ///
+    /// `flowKey` is the slug the host asked for, which is what a trigger names.
+    /// The session itself only knows the document's own id, and those are
+    /// different strings (I3).
+    private func bindTriggers(to session: FlowSession, flowKey: String?) {
+        if let token = lastTriggerToken, let prev = lastTriggerSession {
+            prev.removeEventListener(token)
+        }
+        lastTriggerSession = session
+        lastTriggerToken = session.addEventListener { [weak self] event in
+            guard case .completed(_, _, let reason, _) = event else { return }
+            guard let self, let coordinator = self.triggers else { return }
+            Task { @MainActor in
+                await coordinator.flowEnded(flowSlug: flowKey, reason: reason)
+            }
+        }
+    }
+
     private func platformContext() -> [String: JSONValue] {
         var ctx: [String: JSONValue] = [
             "device.platform": .string(DeviceContext.platform)
@@ -1006,12 +1137,26 @@ final class FunnelState {
         #if canImport(UIKit) && !os(watchOS)
         let flush: @Sendable (Notification) -> Void = { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let uploader = self?.uploader else { return }
+                guard let self else { return }
+                // A decision still waiting for its slot has run out of chances
+                // now that the app is going away. Reported before the flush so
+                // the event it writes rides out with the same batch.
+                self.triggers?.appLeftForeground()
+                guard let uploader = self.uploader else { return }
                 let taskId = UIApplication.shared.beginBackgroundTask()
                 await uploader.flushNow()
                 if taskId != .invalid {
                     UIApplication.shared.endBackgroundTask(taskId)
                 }
+            }
+        }
+        // Call point 1 (spec 05 §Ne zaman çağrılır). `willEnterForeground` does
+        // not fire on a cold launch — that case is covered by the evaluation
+        // `registerPresenter` performs — so this is the returning-user path,
+        // which is where a win-back or a trial-ending flow belongs.
+        let foreground: @Sendable (Notification) -> Void = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.triggers?.evaluate(reason: .foreground)
             }
         }
         let center = NotificationCenter.default
@@ -1021,6 +1166,9 @@ final class FunnelState {
         lifecycleTokens.append(center.addObserver(
             forName: UIApplication.willTerminateNotification,
             object: nil, queue: .main, using: flush))
+        lifecycleTokens.append(center.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil, queue: .main, using: foreground))
         #endif
     }
 

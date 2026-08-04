@@ -77,6 +77,30 @@ final class ProfileStore {
         publish(ProfileChange(key: name, value: value))
     }
 
+    /// Fold the server's snapshot in *under* what this device already holds.
+    ///
+    /// Spec 15 §2 says the profile is the server snapshot plus the local
+    /// session's variables, and the ordering is the whole substance of that
+    /// sentence. A local value is either newer (the person answered it a moment
+    /// ago, and the event carrying it may still be in the upload queue) or
+    /// unknowable to the server — a `sensitive` answer never leaves the device
+    /// at all. Letting the snapshot win would make an answer visibly revert
+    /// mid-session.
+    ///
+    /// What it buys: answers given on another device, or before a reinstall,
+    /// are readable here. That is the half of the profile a local store cannot
+    /// have.
+    func mergeSnapshot(_ snapshot: [String: String]) {
+        var added: [ProfileChange] = []
+        for (name, value) in snapshot where values[name] == nil {
+            values[name] = value
+            added.append(ProfileChange(key: name, value: value))
+        }
+        guard !added.isEmpty else { return }
+        persist()
+        for change in added.sorted(by: { $0.key < $1.key }) { publish(change) }
+    }
+
     /// Drop everything. Called on `resetIdentity` — a new anonymous id means a
     /// different person on the device, and their profile starting out as the
     /// last person's answers is worse than starting empty.

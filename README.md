@@ -156,6 +156,41 @@ Only answers are stored — variable defaults, `{{product.*}}` values and
 variables you pass in through `userVariables` are not. Values marked
 sensitive in the dashboard are readable here and still never uploaded.
 
+### Letting the dashboard decide when a flow appears
+
+Instead of calling `start` yourself, register a presenter and let the rules in
+the dashboard decide. Nothing happens until you register one.
+
+```swift
+UpliftFunnel.registerPresenter(self)
+
+// in your presenter (a view model, an app coordinator — anything)
+func presentSheet(flowKey: String, dismissible: Bool) async -> Bool {
+    sheetFlowKey = flowKey     // drives a .sheet showing UpliftFunnelFlowView
+    return true                // return false if you can't show it right now
+}
+
+func presentFullscreen(flowKey: String, dismissible: Bool) async -> Bool {
+    coverFlowKey = flowKey
+    return true
+}
+```
+
+For a card or a banner inside your own screen, place a slot where you want it
+and give it a size. It renders nothing until something is decided for it:
+
+```swift
+VStack {
+    UpliftFunnelSlot(slotId: "home_top")
+        .frame(height: 120)
+    …the rest of your screen
+}
+```
+
+The SDK asks the server when your app comes to the front, when you `track()` an
+event a rule mentions, and when a flow ends — at most once a minute. It never
+draws anything you did not make room for.
+
 ### Identity & analytics
 
 ```swift
@@ -174,6 +209,8 @@ try await UpliftFunnel.track("first_workout_completed")
 | `UpliftFunnelFlow.experiment(key)` | `UpliftFunnelFlowView.experiment(key)` |
 | `UpliftFunnelFlowView(session:)` | `UpliftFunnelSessionView(session:)` |
 | `UpliftFunnelFlowResult` | `UpliftFunnelFlowResult` (same fields) |
+| `UpliftFunnel.registerPresenter(...)` | `UpliftFunnel.registerPresenter(...)` (same) |
+| `UpliftFunnelSlot(slotId:)` widget | `UpliftFunnelSlot(slotId:)` |
 | `Flow` / `Condition` / `Transition` | `FunnelFlow` / `FunnelCondition` / `FunnelTransition` |
 
 The two SDKs behave identically, so a flow you build once behaves the same on
