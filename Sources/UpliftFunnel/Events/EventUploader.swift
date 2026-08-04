@@ -179,14 +179,39 @@ actor EventUploader {
         // First-class event types (purchase_attempted, ...) rather than
         // payload-wrapped custom_events, so server-side funnel queries hit
         // the (app_id, flow_id, event_type) index directly.
-        case .purchase(_, let ts, let stage, let screenId, let planId, let productId):
+        case .purchase(_, let ts, let stage, let screenId, let planId, let productId,
+                       let priceAmount, let currencyCode):
             stamp(ts)
             base["event_type"] = .string("purchase_\(stage)")
             base["screen_id"] = .string(screenId)
             var payload: [String: JSONValue] = [:]
             if let planId { payload["plan_id"] = .string(planId) }
             if let productId { payload["product_id"] = .string(productId) }
+            // Price rides only on the stage where money actually moved. On
+            // `attempted` it would describe an intention, and summing a column
+            // that mixes intentions with sales is worse than not having it.
+            //
+            // Absent when the host never published the product through
+            // `setProducts`: the SDK does not ask the store, so the honest
+            // answer to "what did this cost" is nothing rather than a guess.
+            if stage == "succeeded" {
+                if let priceAmount { payload["price_amount"] = .number(priceAmount) }
+                if let currencyCode { payload["currency_code"] = .string(currencyCode) }
+            }
             base["payload"] = .object(payload)
+        // Client-side timing, so it is the only number that includes the work
+        // the device did. `screen_id` sits at the top level like every other
+        // screen-scoped event, and is repeated in the payload the metric
+        // registry reads.
+        case .renderTime(_, let ts, let screenId, let ms, let phase):
+            stamp(ts)
+            base["event_type"] = "render_time"
+            base["screen_id"] = .string(screenId)
+            base["payload"] = .object([
+                "screen_id": .string(screenId),
+                "ms": .number(Double(ms)),
+                "phase": .string(phase),
+            ])
         // The completion event carries the whole answer set, so it's the other
         // place values escape. Redacted names leave the map entirely and are
         // listed separately — a placeholder inside `variables` would be

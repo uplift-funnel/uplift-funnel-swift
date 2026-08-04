@@ -17,7 +17,7 @@ it later without shipping an app update.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/uplift-funnel/uplift-funnel-swift.git", from: "0.9.0"),
+.package(url: "https://github.com/uplift-funnel/uplift-funnel-swift.git", from: "0.10.0"),
 // target dependency:
 .product(name: "UpliftFunnel", package: "uplift-funnel-swift")
 ```
@@ -136,6 +136,25 @@ Each product fans out into `{{price.yearly_pro}}`,
 `{{price_per_month.yearly_pro}}`, `{{trial_days.yearly_pro}}`, … variables,
 and `plan_picker` cards auto-bind their price display via the plan's
 `product_id` / `product_id_ios`.
+
+### Reading the answers
+
+Answers are readable while the flow is still running, and after it ends:
+
+```swift
+if UpliftFunnel.profile("goal") == "muscle" { showStrengthTab() }
+
+let answers = UpliftFunnel.profileAll()          // ["goal": "muscle", …]
+
+for await change in UpliftFunnel.profileChanges { // react as they arrive
+    print(change.key, change.value ?? "cleared")
+}
+```
+
+Values persist across app launches and are cleared by `resetIdentity()`.
+Only answers are stored — variable defaults, `{{product.*}}` values and
+variables you pass in through `userVariables` are not. Values marked
+sensitive in the dashboard are readable here and still never uploaded.
 
 ### Identity & analytics
 

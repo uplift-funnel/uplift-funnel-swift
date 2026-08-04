@@ -23,8 +23,18 @@ public enum FlowEvent: Sendable {
     /// `cancelled`, `failed` or `pending`. Emitted by the render host around
     /// the registered purchase handler, so paywall drop-off is measurable
     /// server-side independently of the billing provider's webhooks.
+    ///
+    /// `priceAmount`/`currencyCode` come from the product the host published
+    /// through `setProducts`, and only ride along on `succeeded`. The
+    /// authoritative revenue record stays `revenue_events` on the server; this
+    /// is the rough signal for accounts with no billing provider connected yet.
     case purchase(flowId: String, timestamp: Date, stage: String,
-                  screenId: String, planId: String?, productId: String?)
+                  screenId: String, planId: String?, productId: String?,
+                  priceAmount: Double? = nil, currencyCode: String? = nil)
+    /// How long a screen took to become visible, and then to stop changing.
+    /// `phase` is `first_paint` or `interactive`.
+    case renderTime(flowId: String, timestamp: Date, screenId: String,
+                    ms: Int, phase: String)
     /// Reason "completed"/"completed:<x>" uploads as `flow_completed`;
     /// anything else as `flow_abandoned`.
     case completed(flowId: String, timestamp: Date, reason: String,
@@ -334,11 +344,27 @@ public final class FlowSession: ObservableObject {
 
     /// Record one step of a purchase handoff. Does not affect engine state —
     /// advancing on success stays the host's call.
-    public func trackPurchase(stage: String, planId: String?, productId: String?) {
+    public func trackPurchase(
+        stage: String, planId: String?, productId: String?,
+        priceAmount: Double? = nil, currencyCode: String? = nil
+    ) {
         emit(.purchase(
             flowId: flow.id, timestamp: Date(), stage: stage,
             screenId: engine.currentScreenId,
-            planId: planId, productId: productId))
+            planId: planId, productId: productId,
+            priceAmount: priceAmount, currencyCode: currencyCode))
+    }
+
+    /// Record how long a screen took to reach `phase`.
+    ///
+    /// Called by the render host, which is the only thing that knows when a
+    /// screen actually appeared. Measured per screen, not per session: the
+    /// question this answers is "which screen is slow", and a session-level
+    /// average hides exactly the one that is.
+    public func trackRenderTime(screenId: String, ms: Int, phase: String) {
+        emit(.renderTime(
+            flowId: flow.id, timestamp: Date(),
+            screenId: screenId, ms: ms, phase: phase))
     }
 
     /// Forcefully end the flow with a reason. Used when the host dismisses

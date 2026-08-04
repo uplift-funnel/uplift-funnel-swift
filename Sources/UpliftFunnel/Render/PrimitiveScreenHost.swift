@@ -32,6 +32,16 @@ struct PrimitiveScreenHost: View {
 
     @State private var images: [String: CGImage] = [:]
 
+    /// When this screen's view identity came into existence.
+    ///
+    /// `@State` initialises once per identity, and the session view gives each
+    /// screen its own via `.id(screen.id)` — so this is the moment the SDK
+    /// started building *this* screen, not the moment the session started.
+    @State private var enteredAt = Date()
+    /// Phases already reported, so a re-layout (rotation, keyboard, a parent
+    /// re-render) does not report a second first paint at a later time.
+    @State private var timedPhases: Set<String> = []
+
     var body: some View {
         GeometryReader { geo in
             // ONE answer, used for both the bar and the box below it. Reading
@@ -103,12 +113,34 @@ struct PrimitiveScreenHost: View {
                     onPermission: { type in await onPermission?(type) ?? false },
                     onSignIn: { provider in await onSignIn?(provider) ?? true }
                 )
+                // The screen is on screen. Not a CoreAnimation presentation
+                // timestamp — SwiftUI does not offer one — but the first
+                // layout pass that produced a painted display list, which is
+                // the part this SDK is responsible for and the part that gets
+                // slow when a flow grows.
+                .onAppear { reportRenderTime(phase: "first_paint") }
             }
             .padding(.top, safeTop)
             .padding(.bottom, safeBottom)
         }
         .ignoresSafeArea()
-        .task { await loadImages() }
+        .task {
+            await loadImages()
+            // Remote images are the only thing that keeps changing after the
+            // first paint, so their arrival is when the screen stops moving
+            // under the user. A screen with none reports `interactive` right
+            // after `first_paint` — which is true, and is the number a fast
+            // screen should show.
+            reportRenderTime(phase: "interactive")
+        }
+    }
+
+    /// Emit one `render_time` for `phase`, once per screen entry.
+    private func reportRenderTime(phase: String) {
+        guard !timedPhases.contains(phase) else { return }
+        timedPhases.insert(phase)
+        let ms = Int((Date().timeIntervalSince(enteredAt) * 1000).rounded())
+        session.trackRenderTime(screenId: screen.id, ms: max(ms, 0), phase: phase)
     }
 
     /// Session variables as the renderer's flat strings, and back again.
@@ -310,7 +342,17 @@ func performPurchaseBridge(
     handler: PurchaseHandler
 ) async -> Bool {
     let productId = plan.flatMap { planProductId($0) }
-    session.trackPurchase(stage: "attempted", planId: planId, productId: productId)
+    // What the host told us this product costs, if anything. `setProducts` is
+    // where a real price (StoreKit's, localized, current) enters the SDK; the
+    // plan JSON's price is display copy an author typed months ago, so it is
+    // deliberately not the fallback.
+    let product = productId.flatMap { UpliftFunnel.lookupProducts()[$0] }
+    // Both calls carry what we know; the uploader decides which stage puts it
+    // on the wire. One rule, in the one place that owns the wire shape —
+    // splitting it across the two call sites is how it would drift.
+    session.trackPurchase(
+        stage: "attempted", planId: planId, productId: productId,
+        priceAmount: product?.priceAmount, currencyCode: product?.currencyCode)
 
     let result = await handler(PurchaseRequest(
         flowId: session.flow.id,
@@ -327,19 +369,28 @@ func performPurchaseBridge(
     case .failed: stage = "failed"
     case .pending: stage = "pending"
     }
-    session.trackPurchase(stage: stage, planId: planId, productId: productId)
+    session.trackPurchase(
+        stage: stage, planId: planId, productId: productId,
+        priceAmount: product?.priceAmount, currencyCode: product?.currencyCode)
     return result == .purchased
 }
 
-/// Session vars → renderer strings. Arrays (multi-select `array_string`
+/// One session var → its renderer string. Arrays (multi-select `array_string`
 /// variables) stringify as a JSON array — the renderer's canonical
 /// multi-select encoding — so membership round-trips; everything else is the
 /// scalar's plain string form.
+///
+/// The profile reads through here too, so `UpliftFunnel.profile(_:)` hands the
+/// host the same string the flow itself interpolated. Two spellings of one
+/// answer would be a bug report nobody could reproduce.
+func stringifyVariable(_ v: JSONValue) -> String {
+    if v.arrayValue != nil { return v.serializedString() }
+    return v.stringifiedValue ?? (v.isNull ? "" : v.serializedString())
+}
+
+/// Session vars → renderer strings.
 func stringifyVariables(_ variables: [String: JSONValue]) -> [String: String] {
-    variables.mapValues { v in
-        if v.arrayValue != nil { return v.serializedString() }
-        return v.stringifiedValue ?? (v.isNull ? "" : v.serializedString())
-    }
+    variables.mapValues(stringifyVariable)
 }
 
 /// Inverse of `stringifyVariables` for values written by the renderer: a

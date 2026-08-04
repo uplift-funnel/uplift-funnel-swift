@@ -29,7 +29,7 @@ final class PurchaseFlowTests: XCTestCase {
     private func purchaseStages(_ session: FlowSession) -> Box<[String]> {
         let box = Box<[String]>([])
         session.addEventListener { event in
-            if case .purchase(_, _, let stage, _, _, _) = event {
+            if case .purchase(_, _, let stage, _, _, _, _, _) = event {
                 box.value.append(stage)
             }
         }

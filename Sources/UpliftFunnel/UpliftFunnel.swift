@@ -210,11 +210,14 @@ public enum UpliftFunnel {
 
     /// Clear the identified user (logout). Generates a fresh anonymous id
     /// so the next person on the device is tracked as a new subject and A/B
-    /// stickiness resets. Attributes and attribution are cleared too.
+    /// stickiness resets. Attributes, attribution and the answer profile are
+    /// cleared too — a new subject inheriting the last one's answers would be
+    /// the same mistake as inheriting their variant.
     public static func resetIdentity() async throws {
         let s = try require("resetIdentity")
         s.identity.userId = nil
         s.userAttributes = [:]
+        s.profile.clear()
         let fresh = Identifiers.anonymousId()
         s.identity.anonymousId = fresh
         s.defaults.removeObject(forKey: FunnelState.identifiedUserIdKey)
@@ -565,6 +568,58 @@ public enum UpliftFunnel {
         state?.lastExperimentAssignment
     }
 
+    // MARK: - Profile
+
+    /// One answer this person has given, or nil if they never have.
+    ///
+    /// Readable *while* the flow is still running, which is the point: an app
+    /// that wants to greet someone by the goal they picked two screens ago no
+    /// longer has to wait for the completion callback and keep its own copy.
+    ///
+    /// The value is the same string the flow interpolates for `{{name}}`, so
+    /// `profile("goal")` and a `{{goal}}` on screen can never disagree.
+    ///
+    /// ```swift
+    /// if UpliftFunnel.profile("goal") == "muscle" { showStrengthTab() }
+    /// ```
+    ///
+    /// Survives app launches, and only holds answers — declared defaults,
+    /// `{{product.*}}` values and variables you passed in through
+    /// `userVariables` are not answers and are not here. Cleared by
+    /// `resetIdentity()`; unaffected by `setTrackingEnabled(false)`, which
+    /// governs what leaves the device, not what your app may know about its
+    /// own user.
+    public static func profile(_ key: String) -> String? {
+        state?.profile.value(key)
+    }
+
+    /// Every answer this person has given, newest values.
+    public static func profileAll() -> [String: String] {
+        state?.profile.all ?? [:]
+    }
+
+    /// Answers as they are written, for hosts that would rather react than
+    /// poll. Each call returns its own stream — `AsyncStream` has a single
+    /// consumer, so two observers sharing one would split the changes between
+    /// them.
+    ///
+    /// ```swift
+    /// for await change in UpliftFunnel.profileChanges {
+    ///     if change.key == "goal" { retheme(for: change.value) }
+    /// }
+    /// ```
+    ///
+    /// A cleared profile (`resetIdentity`) arrives as one change per key with
+    /// a nil value.
+    public static var profileChanges: AsyncStream<ProfileChange> {
+        guard let s = state else {
+            // Not configured: an empty stream that finishes, rather than one
+            // that hangs forever on a `for await` the host will never see end.
+            return AsyncStream { $0.finish() }
+        }
+        return s.profile.changes()
+    }
+
     /// Wipe the singleton. Tests-only.
     static func resetForTests() {
         if let s = state {
@@ -678,10 +733,18 @@ final class FunnelState {
     /// Runtime product catalog, keyed by store product id.
     var products: [String: UpliftFunnelProduct] = [:]
 
+    /// Answers this person has given, across flows and app launches.
+    lazy var profile = ProfileStore(defaults: defaults)
+
     /// The most recently started flow session, so `track` can attach the
     /// active flow/session/experiment context to app-level events.
     weak var lastBoundSession: FlowSession?
     private var lastBoundToken: UUID?
+
+    /// Separate from the uploader binding above, because the profile listener
+    /// outlives analytics being switched off.
+    private weak var lastProfileSession: FlowSession?
+    private var lastProfileToken: UUID?
 
     /// Per-launch app-session id for `track` events fired outside a flow.
     private var appSessionId: String?
@@ -883,6 +946,7 @@ final class FunnelState {
             prev.removeEventListener(token)
         }
         lastBoundSession = session
+        bindProfile(to: session)
         guard let uploader else { return }
         let sessionId = session.sessionId
         let flowId = session.flow.id
@@ -900,6 +964,28 @@ final class FunnelState {
                 experiment: experiment, flowVersion: flowVersion,
                 redacted: redacted)
             Task { await uploader.enqueue(payload) }
+        }
+    }
+
+    /// Feed committed answers into the profile.
+    ///
+    /// A listener of its own rather than a branch inside the uploader's: the
+    /// profile is the host's data and must keep filling when analytics is off,
+    /// when no uploader exists, and when the flow is running against a preview
+    /// server. Consent governs what leaves the device, not what the app is
+    /// allowed to know about its own user.
+    ///
+    /// `variableSet` only. Declared defaults, `{{product.*}}` values and the
+    /// host's own `userVariables` are all in `session.variables` and none of
+    /// them are something the person said.
+    private func bindProfile(to session: FlowSession) {
+        if let token = lastProfileToken, let prev = lastProfileSession {
+            prev.removeEventListener(token)
+        }
+        lastProfileSession = session
+        lastProfileToken = session.addEventListener { [weak self] event in
+            guard case .variableSet(_, _, _, let name, let value) = event else { return }
+            self?.profile.set(name, stringifyVariable(value))
         }
     }
 
