@@ -478,21 +478,26 @@ public final class FlowSession: ObservableObject {
         let slug = flowSlug
         let session = sessionId
         let snapshot = variables
+        let startedOn = engine.currentScreenId
         Task { @MainActor [weak self] in
             let outcome = await InferenceRunner.run(
                 spec: spec, flowSlug: slug, sessionId: session,
                 variables: snapshot, environment: inference)
             guard let self else { return }
             self.inferencesRunning.remove(id)
-            self.finish(spec: spec, outcome: outcome)
+            self.finish(spec: spec, outcome: outcome, startedOn: startedOn)
         }
     }
 
-    private func finish(spec: InferenceSpec, outcome: InferenceOutcome) {
-        // The screen may have moved on — a user who tapped through, or a
-        // `goto` fallback that already ran. Writing the variables is still
-        // right (the answer is about them, not about where they are), but
-        // navigating is not.
+    private func finish(spec: InferenceSpec, outcome: InferenceOutcome, startedOn: String) {
+        // Writing the variables is always right — the answer is about the
+        // person, not about where they happen to be standing. Navigating is
+        // not: the screen may have moved on, either because the user tapped
+        // through or because the same tap carried a `next` after the `infer:`.
+        // Advancing again from here would skip a screen nobody saw, and the
+        // same staleness guard `handleAction(fromScreenId:)` already uses is
+        // the answer.
+        let stillHere = engine.currentScreenId == startedOn && !completed
         switch outcome {
         case .ready(let outputs):
             for (name, value) in outputs {
@@ -505,12 +510,12 @@ public final class FlowSession: ObservableObject {
                 setVariable(name, value)
             }
             setStatus(spec.id, .ready)
-            advance()
+            if stillHere { advance() }
         case .failed(let code, let message):
             setStatus(spec.id, .failed)
             setInternal("inference.\(spec.id).error", .string(code))
             setInternal("inference.\(spec.id).message", .string(message))
-            applyFallback(spec)
+            if stillHere { applyFallback(spec) }
         }
     }
 

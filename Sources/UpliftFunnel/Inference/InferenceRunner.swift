@@ -220,14 +220,12 @@ enum InferenceRunner {
         let subjectId = environment.subjectIdProvider()
         guard !subjectId.isEmpty else { return false }
         // The provider and model are the server's to know — it reads them off
-        // the app's binding, the same row the submit will resolve. Sending
-        // empty strings would record a grant for a vendor nobody named, which
-        // is worse than no grant at all.
+        // the app's binding, the same row the submit will resolve. The client
+        // sends what it has: which capability, and which version of the text
+        // the person just read.
         return await environment.client.recordConsent(
             subjectId: subjectId,
             purpose: spec.capability,
-            provider: "",
-            model: "",
             policyVersion: environment.policyVersion)
     }
 

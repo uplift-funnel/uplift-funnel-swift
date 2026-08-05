@@ -443,6 +443,16 @@ final class InferenceTests: XCTestCase {
         let body = try XCTUnwrap(consent.bodyJSON?.objectValue)
         XCTAssertEqual(body["purpose"], .string("image_analysis"))
         XCTAssertEqual(body["policy_version"], .string("v1"))
+        // No provider and no model, because the client does not know them and
+        // must not: they live in the app's binding, which is what keeps a flow
+        // document from naming the vendor that receives a photo. The server
+        // resolves them and records the name it will actually send to.
+        //
+        // Sending empty strings — which this did until a simulator round found
+        // it — made the server reject every grant with a 400, so consent was
+        // silently never recorded and every inference then 403'd.
+        XCTAssertNil(body["provider"])
+        XCTAssertNil(body["model"])
     }
 
     func testADoubleTapStartsOneJob() async throws {
@@ -467,6 +477,29 @@ final class InferenceTests: XCTestCase {
         // The count is also 1 rather than 2 because arriving at the loading
         // screen must not re-run what the button already started.
         XCTAssertEqual(submits.count, 1)
+    }
+
+    func testAResultThatArrivesAfterTheUserMovedOnDoesNotSkipAScreen() async throws {
+        // `["infer:skin", "next"]` on one button: the tap starts the job and
+        // then advances, and the job finishes later. Advancing again from the
+        // completion handler would skip a screen nobody saw.
+        let (session, _) = try makeSession(flow: try makeFlow(photoInput: false)) { path in
+            if path.contains("/jobs/") {
+                return ok(#"{"status":"SUCCEEDED","outputs":{"skin_type":"oily"}}"#)
+            }
+            return ok(#"{"job_id":"inf_1","poll_after_ms":10}"#)
+        }
+        session.setVariable("goal", .string("clear"))
+        session.handleAction("infer:skin")
+        session.handleAction("next")          // capture → analysing, immediately
+        XCTAssertEqual(session.currentScreen.id, "analysing")
+
+        try? await Task.sleep(nanoseconds: 120_000_000)
+
+        // The answer still landed — it is about the person, not about where
+        // they are standing — but the flow stayed put.
+        XCTAssertEqual(session.variables["skin_type"], .string("oily"))
+        XCTAssertEqual(session.currentScreen.id, "analysing")
     }
 
     // MARK: - decoding

@@ -68,16 +68,18 @@ struct InferenceClient: Sendable {
     /// is a submit that the server refuses without this row, so the caller
     /// waits and learns whether it landed.
     func recordConsent(
-        subjectId: String, purpose: String, provider: String, model: String,
-        policyVersion: String
+        subjectId: String, purpose: String, policyVersion: String
     ) async -> Bool {
         guard let url = URL(string: "\(config.serverUrl)/v1/inference/consent") else {
             return false
         }
+        // No provider and no model, because the client does not know them and
+        // must not: they live in the app's binding, server-side, precisely so a
+        // flow document cannot name the vendor that receives a photo. The
+        // server fills them in from the binding and records the name it will
+        // actually send to.
         let body: [String: JSONValue] = [
             "purpose": .string(purpose),
-            "provider": .string(provider),
-            "model": .string(model),
             "policy_version": .string(policyVersion),
         ]
         guard let data = try? JSONValue.object(body).serializedData() else { return false }

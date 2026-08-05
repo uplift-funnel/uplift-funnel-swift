@@ -97,6 +97,12 @@ struct ContentView: View {
 
     @ViewBuilder
     private var identitySection: some View {
+        Section("Triggers") {
+            // A slot inside a real scrolling list, which is where a slot
+            // actually lives and the one place its gesture and safe-area
+            // behaviour can be seen.
+            NavigationLink("Slot in a list") { SlotDemo() }
+        }
         Section("Identity & analytics") {
             Button("Identify") {
                 Task {
