@@ -487,6 +487,52 @@ public enum UpliftFunnel {
         requireForRegistration("registerPhotoUploadHandler")?.photoUploadHandler = handler
     }
 
+    /// Turn a `photo_upload` reference into bytes, for flows that run inference
+    /// on the photo.
+    ///
+    /// Only needed when the picker hands back something the SDK cannot read on
+    /// its own: an asset id in the app's own store, a PHAsset identifier, a
+    /// cache key. `file://` URLs, absolute paths and `data:` URIs — which is
+    /// what almost every picker returns — are read without this.
+    ///
+    /// Return nil for a reference you do not recognise either; the flow then
+    /// applies its inference fallback and carries on.
+    public static func registerInferenceMediaResolver(
+        _ resolver: @escaping InferenceMediaResolver
+    ) {
+        requireForRegistration("registerInferenceMediaResolver")?
+            .inferenceMediaResolver = resolver
+    }
+
+    /// What the SDK checks before a photo leaves the device.
+    ///
+    /// The defaults are the universally safe ones — readable, big enough,
+    /// downscaled, under the size ceiling — and a photo that fails them makes
+    /// **no network call at all** (spec 15 criterion 9).
+    ///
+    /// `requiresFace` is off by default and is the one to turn on for a selfie
+    /// flow. It stays off by default because nothing in a flow document says
+    /// "expect a face here", and a meal photo sent for calorie estimation is a
+    /// legitimate `image_analysis` that a face check would refuse.
+    ///
+    /// Face detection is presence-only (`VNDetectFaceRectanglesRequest`) and
+    /// the rectangle is discarded the moment it is counted — no template is
+    /// computed and none could be stored, which is what keeps this outside
+    /// GDPR Art. 9.
+    public static func setInferencePreflight(_ preflight: InferencePreflight) {
+        requireForRegistration("setInferencePreflight")?.inferencePreflight = preflight
+    }
+
+    /// The version of the consent text this build ships.
+    ///
+    /// Recorded with every grant a `consent:<id>` action makes, so changing the
+    /// copy shows up as a different version rather than being silently covered
+    /// by an agreement someone gave to older wording. Defaults to the app
+    /// version.
+    public static func setConsentPolicyVersion(_ version: String) {
+        requireForRegistration("setConsentPolicyVersion")?.consentPolicyVersion = version
+    }
+
     /// Register the app's URL opener for `url:<href>` actions — markdown
     /// links in text nodes and buttons with a `url:` action.
     ///
@@ -779,6 +825,19 @@ final class FunnelState {
     var photoUploadHandler: PhotoUploadHandler?
     var linkHandler: LinkHandler?
 
+    /// Resolves a `photo_upload` reference the SDK cannot read as a local file.
+    /// Only needed when the app's picker returns something private to it.
+    var inferenceMediaResolver: InferenceMediaResolver?
+
+    /// What is checked before a photo leaves the device.
+    var inferencePreflight = InferencePreflight()
+
+    /// The version of the consent text this build ships, recorded with every
+    /// grant. Defaults to the app version, which is the honest answer when the
+    /// customer has not versioned the copy separately: the text shipped in a
+    /// build, and that is the build.
+    lazy var consentPolicyVersion: String = appVersion ?? "unversioned"
+
     /// Consent switch — see `UpliftFunnel.setTrackingEnabled`.
     var trackingEnabled = true
 
@@ -1041,7 +1100,43 @@ final class FunnelState {
             flowVersion: flowVersion)
         bindUploader(to: session)
         bindTriggers(to: session, flowKey: flowKey)
+        bindInference(to: session, flowKey: flowKey)
         return session
+    }
+
+    /// Give the session what it needs to run an `infer:` action.
+    ///
+    /// Assigned before the deferred `started` task runs, so the entry screen's
+    /// auto-start finds an environment rather than falling straight through to
+    /// its fallback. `flowSlug` is how the server locates the aspect in the
+    /// document — the same slug the flow was served under.
+    private func bindInference(to session: FlowSession, flowKey: String?) {
+        session.flowSlug = flowKey ?? session.flow.id
+        session.inference = makeInferenceEnvironment()
+    }
+
+    func makeInferenceEnvironment() -> InferenceEnvironment {
+        let identity = identity
+        let bundleId = bundleId
+        let client = InferenceClient(config: InferenceClientConfig(
+            serverUrl: serverUrl,
+            apiKeyProvider: { identity.activeApiKey ?? "" },
+            bundleIdProvider: { bundleId },
+            urlSession: urlSession))
+        return InferenceEnvironment(
+            client: client,
+            // The same subject the flow, experiment and trigger reads use. A
+            // different answer here would mean consent recorded for one person
+            // and an inference run for another.
+            subjectIdProvider: { [weak self] in
+                self?.identity.userId ?? self?.identity.anonymousId ?? ""
+            },
+            mediaResolver: inferenceMediaResolver,
+            preflight: inferencePreflight,
+            policyVersion: consentPolicyVersion,
+            sleep: { nanoseconds in
+                try? await Task.sleep(nanoseconds: nanoseconds)
+            })
     }
 
     /// Wire a session's events into the uploader. Only the last bound

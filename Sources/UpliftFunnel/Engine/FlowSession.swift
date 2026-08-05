@@ -75,6 +75,40 @@ public final class FlowSession: ObservableObject {
 
     private var listeners: [UUID: (FlowEvent) -> Void] = [:]
 
+    // ── inference ────────────────────────────────────────────────────────────
+    //
+    // Caught here rather than in the render host, where `permission:` lives,
+    // and that is not a preference: spec 15 criterion 1 says no item of that
+    // spec changes the render pipeline, and an architecture test holds the
+    // `Render/` and `UpliftLayout/` diffs empty. The engine is where `go:` and
+    // `set:` are already handled, so `infer:` and `consent:` belong next to
+    // them anyway.
+
+    /// Set by `UpliftFunnel` when a flow starts. Nil means inference is
+    /// unavailable — an `infer:` action then applies its fallback immediately
+    /// rather than hanging, which is the same answer a dead network gives.
+    var inference: InferenceEnvironment?
+
+    /// The flow slug this session was served under. The server resolves the
+    /// inference behavior from the document, and this is how it finds it.
+    var flowSlug: String = ""
+
+    /// Ids with a run in flight, so a double-tap starts one job rather than
+    /// two. The server would deduplicate anyway (one idempotency key, one
+    /// charge), but a second in-flight run would race to write the same
+    /// variables and the loser's answer would win at random.
+    private var inferencesRunning: Set<String> = []
+
+    /// Ids that have been started at least once, by any route.
+    ///
+    /// Written by manual `infer:` taps too, not just by auto-start, and that is
+    /// the point: a CTA that starts a job and then navigates to the loading
+    /// screen carrying the same aspect would otherwise run it twice. The server
+    /// deduplicates on the idempotency key so it would cost one charge, but it
+    /// is still two round trips and two races to write the same variables.
+    /// A second explicit tap — a "try again" button — is still honoured.
+    private var autoStarted: Set<String> = []
+
     public init(
         flow: FunnelFlow,
         initialVariables: [String: JSONValue]? = nil,
@@ -101,6 +135,11 @@ public final class FlowSession: ObservableObject {
                 flowId: flow.id,
                 timestamp: Date(),
                 entryScreenId: flow.entryScreenId))
+            // Seed before auto-start: a status token on the entry screen has to
+            // read `idle` rather than its own braces, and the entry screen is
+            // allowed to be the one that carries the aspect.
+            self.seedInferenceStatuses()
+            self.autoStartInferencesForCurrentScreen()
         }
     }
 
@@ -269,6 +308,10 @@ public final class FlowSession: ObservableObject {
                 complete(String(action.dropFirst(4)))
             } else if action.hasPrefix("set:") {
                 setLiteral(String(action.dropFirst(4)))
+            } else if action.hasPrefix("infer:") {
+                startInference(String(action.dropFirst("infer:".count)))
+            } else if action.hasPrefix("consent:") {
+                recordConsent(String(action.dropFirst("consent:".count)))
             } else {
                 emitCustom(action)
             }
@@ -303,6 +346,185 @@ public final class FlowSession: ObservableObject {
             value = .string(raw)
         }
         setVariable(name, value)
+    }
+
+    // MARK: - inference
+
+    /// Every `behavior.inference` in the flow, by id.
+    ///
+    /// Walks the whole document rather than one screen, because `infer:<id>`
+    /// resolves flow-wide: the tap that starts a job and the screen that shows
+    /// its result are usually two different screens, with a loading screen in
+    /// between.
+    private func inferenceSpecs() -> [String: InferenceSpec] {
+        var out: [String: InferenceSpec] = [:]
+        for screen in flow.screens {
+            for raw in Self.findInferences(screen.root) {
+                guard let spec = InferenceSpec.decode(raw) else { continue }
+                if out[spec.id] == nil { out[spec.id] = spec }
+            }
+        }
+        return out
+    }
+
+    /// Depth-first search for `behavior.inference` dictionaries.
+    ///
+    /// Walks every object value rather than only `children`, the same way the
+    /// server's resolver and the schema's rules do: an aspect can sit on a node
+    /// nested inside props, and a search that only knows `children` finds a
+    /// subset and reports the rest as missing.
+    private static func findInferences(_ value: JSONValue) -> [[String: Any]] {
+        var out: [[String: Any]] = []
+        func walk(_ node: JSONValue) {
+            if let array = node.arrayValue {
+                for item in array { walk(item) }
+                return
+            }
+            guard let object = node.objectValue else { return }
+            if let behavior = object["behavior"]?.objectValue,
+               let inference = behavior["inference"],
+               let raw = inference.anyValue as? [String: Any] {
+                out.append(raw)
+            }
+            for child in object.values { walk(child) }
+        }
+        walk(value)
+        return out
+    }
+
+    /// Write `inference.<id>.status` and the fields a ready result published.
+    ///
+    /// Straight to the engine, with no `variable_set` event and no dirty mark:
+    /// this is SDK state a waiting screen draws from, not something the user
+    /// answered, and emitting it would put engine bookkeeping in the same
+    /// analytics stream as the person's own choices. The mapped *outputs* do
+    /// emit — the server already recorded them, and they are answers.
+    private func setInternal(_ name: String, _ value: JSONValue) {
+        try? engine.setVariable(name, value)
+    }
+
+    private func setStatus(_ id: String, _ status: InferenceStatus) {
+        setInternal("inference.\(id).status", .string(status.rawValue))
+        // The condition variable the schema documents, so `transitions` and
+        // `visible.when` can branch without a new operator.
+        setInternal("inference_\(id)_status", .string(status.rawValue))
+        objectWillChange.send()
+    }
+
+    /// Seed every declared inference to `idle`.
+    ///
+    /// Without this the token renders as literal `{{inference.skin.status}}` on
+    /// any screen the user reaches before the job starts — the renderer keeps
+    /// braces for unresolved names on purpose, and a progress line above the
+    /// CTA is a perfectly ordinary design.
+    func seedInferenceStatuses() {
+        for id in inferenceSpecs().keys where variables["inference.\(id).status"] == nil {
+            setStatus(id, .idle)
+        }
+    }
+
+    /// Start any inference whose aspect sits on the current screen's ROOT node.
+    ///
+    /// Root only, and that is the spec's rule (04 §Tetikleme): an aspect deeper
+    /// in the tree waits for `infer:`. A loading screen declares its work by
+    /// carrying it at the top; a button that starts one says so with an action.
+    func autoStartInferencesForCurrentScreen() {
+        guard let root = currentScreen.root.objectValue,
+              let behavior = root["behavior"]?.objectValue,
+              let raw = behavior["inference"]?.anyValue as? [String: Any],
+              let spec = InferenceSpec.decode(raw),
+              !autoStarted.contains(spec.id)
+        else { return }
+        autoStarted.insert(spec.id)
+        startInference(spec.id)
+    }
+
+    /// `consent:<id>` — the user agreed to what the screen they are on said.
+    ///
+    /// Fire-and-forget on purpose. The submit that follows is what actually
+    /// needs the record, and the server refuses it with 403 if this did not
+    /// land — so a failure here surfaces as the flow's own fallback rather than
+    /// as a blocked tap on a screen the user thought they had finished with.
+    private func recordConsent(_ id: String) {
+        guard let inference, let spec = inferenceSpecs()[id] else { return }
+        Task { @MainActor in
+            _ = await InferenceRunner.recordConsent(spec: spec, environment: inference)
+        }
+    }
+
+    /// `infer:<id>` — run it, then write what came back and move on.
+    ///
+    /// Criterion 4 in one function: every path ends in either the outputs or
+    /// the fallback, and both end with the flow advancing. There is no branch
+    /// that leaves the user where they were.
+    private func startInference(_ id: String) {
+        guard let spec = inferenceSpecs()[id] else { return }
+        guard !inferencesRunning.contains(id) else { return }
+
+        guard let inference else {
+            // Not configured: the same answer a dead network gives, delivered
+            // immediately rather than after a timeout nobody benefits from.
+            setStatus(id, .failed)
+            setInternal("inference.\(id).error", .string("not_configured"))
+            applyFallback(spec)
+            return
+        }
+
+        inferencesRunning.insert(id)
+        autoStarted.insert(id)
+        setStatus(id, .pending)
+        setInternal("inference.\(id).error", .string(""))
+
+        let slug = flowSlug
+        let session = sessionId
+        let snapshot = variables
+        Task { @MainActor [weak self] in
+            let outcome = await InferenceRunner.run(
+                spec: spec, flowSlug: slug, sessionId: session,
+                variables: snapshot, environment: inference)
+            guard let self else { return }
+            self.inferencesRunning.remove(id)
+            self.finish(spec: spec, outcome: outcome)
+        }
+    }
+
+    private func finish(spec: InferenceSpec, outcome: InferenceOutcome) {
+        // The screen may have moved on — a user who tapped through, or a
+        // `goto` fallback that already ran. Writing the variables is still
+        // right (the answer is about them, not about where they are), but
+        // navigating is not.
+        switch outcome {
+        case .ready(let outputs):
+            for (name, value) in outputs {
+                setInternal("inference.\(spec.id).\(name)", value)
+                // The mapped variable is the durable half and the one the rest
+                // of the flow was authored against, so it emits like any other
+                // answer. The server already wrote its own `variable_set`; the
+                // client's carries the same name and value, and ingest
+                // deduplicates on the event id.
+                setVariable(name, value)
+            }
+            setStatus(spec.id, .ready)
+            advance()
+        case .failed(let code, let message):
+            setStatus(spec.id, .failed)
+            setInternal("inference.\(spec.id).error", .string(code))
+            setInternal("inference.\(spec.id).message", .string(message))
+            applyFallback(spec)
+        }
+    }
+
+    /// The three shapes, and all three advance.
+    private func applyFallback(_ spec: InferenceSpec) {
+        switch spec.fallback {
+        case .skip:
+            advance()
+        case .goto(let screenId):
+            jumpTo(screenId)
+        case .setVariables(let values):
+            for (name, value) in values { setVariable(name, value) }
+            advance()
+        }
     }
 
     private func jumpTo(_ screenId: String) {
@@ -388,6 +610,9 @@ public final class FlowSession: ObservableObject {
             emit(.screenChanged(
                 flowId: flow.id, timestamp: Date(),
                 from: fromId, to: screenId))
+            // After the event, so a loading screen's `screen_changed` is
+            // recorded before the job it exists to wait for starts.
+            autoStartInferencesForCurrentScreen()
         case .completed(let reason):
             if completed { return }
             completed = true
