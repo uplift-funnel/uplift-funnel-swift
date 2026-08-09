@@ -183,6 +183,19 @@ public enum UpliftFunnel {
         await s.uploader?.setTrackingEnabled(trackingEnabled)
         // Restore any events persisted from a previous run.
         await s.uploader?.restore()
+
+        // Tear down the previous reporter's pending send before replacing it,
+        // or a re-configure leaves a timer describing the old configuration.
+        if let previousReporter = previous?.installReporter {
+            await previousReporter.close()
+        }
+        s.installReporter = s.makeInstallReporter(trackingEnabled: trackingEnabled)
+        // Schedules the first report. Anything the host registers in the next
+        // couple of seconds — a presenter, a product catalog — lands in it,
+        // which is the point: a report sent from here would say "no presenter"
+        // on every correctly-wired app.
+        s.noteInstallChanged()
+
         s.registerLifecycleObserver()
         state = s
     }
@@ -428,6 +441,7 @@ public enum UpliftFunnel {
         guard let s = requireForRegistration("setProducts") else { return }
         s.products = Dictionary(
             products.map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        s.noteInstallChanged()
     }
 
     // MARK: - Triggers
@@ -455,6 +469,7 @@ public enum UpliftFunnel {
     public static func registerPresenter(_ presenter: UpliftPresenter) {
         guard let s = requireForRegistration("registerPresenter") else { return }
         s.ensureTriggers().register(presenter: presenter)
+        s.noteInstallChanged()
         Task { await s.triggers?.evaluate(reason: .foreground) }
     }
 
@@ -467,7 +482,10 @@ public enum UpliftFunnel {
         coordinator.attach(slot: slotId, sink: sink)
         // The first slot placed is the same moment as the first presenter
         // registered: there is now somewhere to put an answer.
-        if !wasActive { Task { await coordinator.evaluate(reason: .foreground) } }
+        if !wasActive {
+            s.noteInstallChanged()
+            Task { await coordinator.evaluate(reason: .foreground) }
+        }
     }
 
     static func detachSlot(_ slotId: String) {
@@ -653,6 +671,12 @@ public enum UpliftFunnel {
         if let uploader = s.uploader {
             Task { await uploader.setTrackingEnabled(enabled) }
         }
+        // Consent covers this too. With it off nothing is reported, and the
+        // server reads the silence as "not measured" rather than as "no
+        // presenter" — which is why those columns are nullable server-side.
+        if let reporter = s.installReporter {
+            Task { await reporter.setTrackingEnabled(enabled) }
+        }
     }
 
     /// Drain the in-memory event uploader buffer. Usually unnecessary — the
@@ -730,7 +754,13 @@ public enum UpliftFunnel {
         if let s = state {
             s.removeLifecycleObserver()
             let uploader = s.uploader
-            Task { await uploader?.close() }
+            let reporter = s.installReporter
+            Task {
+                await uploader?.close()
+                // Otherwise a pending report from the test that just ended
+                // fires during the next one and lands in its recorded requests.
+                await reporter?.close()
+            }
         }
         state = nil
     }
@@ -872,6 +902,18 @@ final class FunnelState {
 
     /// Trigger evaluation, or nil until a host gives it somewhere to present.
     var triggers: TriggerCoordinator?
+
+    /// Tells the server what this install registered. See `InstallReporter`.
+    var installReporter: InstallReporter?
+    /// What the reporter will describe, written here and read there.
+    let installSnapshot = InstallSnapshotBox(
+        InstallSnapshot(
+            sdkVersion: kUpliftFunnelSdkVersion,
+            platform: DeviceContext.platform,
+            osVersion: DeviceContext.osVersion,
+            appVersion: nil,
+            hasPresenter: false,
+            productCount: 0))
 
     /// Per-launch app-session id for `track` events fired outside a flow.
     private var appSessionId: String?
@@ -1029,6 +1071,44 @@ final class FunnelState {
             contextProvider: { identity.eventContext },
             queueStore: UserDefaultsEventQueueStore(defaults: defaults),
             urlSession: urlSession))
+    }
+
+    /// Build the install reporter and mark it dirty, so the first report lands
+    /// one coalescing delay after the host finishes wiring.
+    func makeInstallReporter(trackingEnabled: Bool) -> InstallReporter? {
+        let identity = identity
+        let bundleId = bundleId
+        guard let endpoint = URL(string: "\(serverUrl)/v1/install") else { return nil }
+        return InstallReporter(
+            config: InstallReporter.Config(
+                endpoint: endpoint,
+                apiKeyProvider: { identity.activeApiKey ?? "" },
+                bundleIdProvider: { bundleId },
+                installationIdProvider: { identity.anonymousId },
+                urlSession: urlSession,
+                store: UserDefaultsInstallFingerprintStore(defaults: defaults),
+                snapshot: installSnapshot),
+            trackingEnabled: trackingEnabled)
+    }
+
+    /// Re-read what the host has registered and schedule a report.
+    ///
+    /// Called from the places that change the answer. Cheap and idempotent:
+    /// the snapshot write is synchronous, and the reporter coalesces, so three
+    /// calls during a launch produce one request.
+    func noteInstallChanged() {
+        installSnapshot.value = InstallSnapshot(
+            sdkVersion: kUpliftFunnelSdkVersion,
+            platform: DeviceContext.platform,
+            osVersion: DeviceContext.osVersion,
+            appVersion: appVersion,
+            // A slot is somewhere to present too — `attachSlot` and
+            // `registerPresenter` are the same fact from the server's side,
+            // and `isActive` is already the SDK's own name for it.
+            hasPresenter: triggers?.isActive ?? false,
+            productCount: products.count)
+        guard let reporter = installReporter else { return }
+        Task { await reporter.noteChanged() }
     }
 
     // MARK: Experiment assignment persistence
