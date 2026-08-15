@@ -191,6 +191,42 @@ The SDK asks the server when your app comes to the front, when you `track()` an
 event a rule mentions, and when a flow ends — at most once a minute. It never
 draws anything you did not make room for.
 
+### When a flow runs a model
+
+A flow can analyse a photo the user just gave it and carry on with the result.
+That runs on the server; what your app owns is the photo.
+
+**Most apps need nothing here.** The SDK reads `file://` URLs, absolute paths
+and `data:` URIs on its own, which is what almost every picker returns. Register
+a resolver only when yours hands back something the SDK cannot read — an asset
+id in your own store, a `PHAsset` identifier, a cache key:
+
+```swift
+UpliftFunnel.registerInferenceMediaResolver { reference in
+    await myAssetStore.data(for: reference)   // nil if you don't know it either
+}
+```
+
+Returning `nil` is a real answer: the flow applies its own fallback and carries
+on rather than stalling.
+
+Before any photo leaves the device the SDK checks it, and one that fails makes
+**no network call at all**. The defaults are the safe ones; the one worth
+changing is the face check, off by default because a meal photo sent for calorie
+estimation is a legitimate analysis a face check would refuse:
+
+```swift
+var preflight = InferencePreflight()
+preflight.requiresFace = true          // selfie flows
+UpliftFunnel.setInferencePreflight(preflight)
+```
+
+The rest are size limits: `minimumDimension` (200) rejects an image too small to
+read, `maximumDimension` (1536) downscales before upload, `maximumBytes` (8 MB)
+is the ceiling after that, `compressionQuality` (0.8) is the JPEG quality. Face
+detection is presence-only and the rectangle is discarded the moment it is
+counted — no template is computed and none could be stored.
+
 ### Identity & analytics
 
 ```swift
