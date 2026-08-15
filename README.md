@@ -17,7 +17,7 @@ it later without shipping an app update.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/uplift-funnel/uplift-funnel-swift.git", from: "0.10.0"),
+.package(url: "https://github.com/uplift-funnel/uplift-funnel-swift.git", from: "0.10.1"),
 // target dependency:
 .product(name: "UpliftFunnel", package: "uplift-funnel-swift")
 ```
