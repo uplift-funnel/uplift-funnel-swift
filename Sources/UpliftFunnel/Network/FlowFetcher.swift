@@ -225,14 +225,31 @@ public final class FlowFetcher: @unchecked Sendable {
             response = http
         } catch {
             // Network error / timeout — no response reached us at all. Fall
-            // back to cache silently if available.
+            // back to cache if available. Silent to the host, but not to the
+            // console: serving a cached copy is the right call and also the
+            // reason a developer can stare at yesterday's flow while their dev
+            // server is down and see nothing wrong.
             if let cached {
+                UpliftLog.error(
+                    "'\(flowId)': network failed (\(error.localizedDescription)) "
+                    + "— serving the cached copy")
                 return FetchedFlow(
                     json: cached.json, source: .cache, etag: cached.etag,
                     flowVersion: cached.version)
             }
+            // `"\(error)"` here used to put the whole NSError description on
+            // the error screen — six lines of `_kCFStreamErrorCodeKey` and a
+            // task UUID, which pushed the Retry button off the fold and told
+            // the reader nothing `localizedDescription` does not. The one part
+            // of that dump worth having is the URL that failed, and the
+            // console is where it belongs: it is the answer to "which server
+            // did this build actually point at", and it should not have to be
+            // read off a phone.
+            UpliftLog.error(
+                "'\(flowId)': \(url.absoluteString) — \(error.localizedDescription)")
             throw FlowFetchError(
-                kind: .network, flowKey: flowId, message: "\(error)")
+                kind: .network, flowKey: flowId,
+                message: error.localizedDescription)
         }
 
         // Status is checked BEFORE any parsing of the body — an error page
@@ -278,13 +295,30 @@ public final class FlowFetcher: @unchecked Sendable {
                 flowVersion: headerVersion, experimentAssignment: assignment)
         }
 
-        // Non-2xx, non-304. If we have a cached copy, fall back silently;
-        // otherwise surface a typed, friendly error. Never parse the body.
+        // Non-2xx, non-304. If we have a cached copy, fall back; otherwise
+        // surface a typed, friendly error. Never parse the body.
+        //
+        // The log is not decoration here. This branch is how an unpublished
+        // flow, a revoked key or a bundle-id mismatch stays invisible for as
+        // long as the cache lives: the host keeps being handed a flow that
+        // works, and the 401 or 404 that would have explained the next
+        // surprise is thrown away. Without this line the only symptom is
+        // "changes aren't showing up".
         if let cached {
+            UpliftLog.error(
+                "'\(flowId)': server said \(response.statusCode) "
+                + "— serving the cached copy instead")
             return FetchedFlow(
                 json: cached.json, source: .cache, etag: cached.etag,
                 flowVersion: cached.version)
         }
+        // The 401/404 path, and the one an integration actually lands on. The
+        // URL is the whole diagnosis more often than the status is: a 404
+        // against a staging host and a 404 against production are different
+        // problems, and neither the thrown error nor the error screen carries
+        // where the request went.
+        UpliftLog.error(
+            "'\(flowId)': \(url.absoluteString) — HTTP \(response.statusCode)")
         throw FlowFetchError(
             kind: kindForStatus(response.statusCode), flowKey: flowId,
             statusCode: response.statusCode)
@@ -328,9 +362,7 @@ public final class FlowFetcher: @unchecked Sendable {
                     etag: etag, version: headerVersion))
             }
         } catch {
-            #if DEBUG
-            print("[funnel] background revalidation failed for \(flowId): \(error)")
-            #endif
+            UpliftLog.error("background revalidation failed for '\(flowId)': \(error)")
         }
     }
 

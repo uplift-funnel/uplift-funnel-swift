@@ -110,7 +110,12 @@ public struct UpliftFunnelFlowView: View {
             case .loading:
                 loadingView?() ?? AnyView(
                     ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        // The same reason `DefaultErrorView` paints one: a
+                        // transparent fallback inherits whatever is behind it,
+                        // and a dark spinner on a dark host is as invisible as
+                        // dark text was.
+                        .background(SDKSurface.background))
             case .failed(let error):
                 errorView?(error, retry) ?? AnyView(DefaultErrorView(
                     error: error, retry: retry))
@@ -140,6 +145,14 @@ public struct UpliftFunnelFlowView: View {
                 }
                 phase = .ready(start)
             } catch {
+                // The console half of the fix. The view below says what went
+                // wrong, but only once somebody is looking at the device — and
+                // a host that passes its own `errorView:` may render something
+                // that says nothing at all. This line is what makes a failed
+                // start greppable in Xcode either way.
+                UpliftLog.error(
+                    "\(isExperiment ? "startExperiment" : "start")"
+                    + "(\"\(flowKey)\") failed: \(error.localizedDescription)")
                 phase = .failed(error)
             }
         }
@@ -161,17 +174,88 @@ public struct UpliftFunnelFlowView: View {
     }
 }
 
+/// The system background, for the two fallback states that have to be legible
+/// on a host we know nothing about.
+///
+/// Both default states used to be transparent, which is what made the error
+/// view unreadable in the field: over a host whose window is black, with a
+/// colour scheme that resolves `.primary` to black, the message rendered
+/// black on black. It occupied its three lines and said nothing. Painting the
+/// system background means the foreground and the background always resolve
+/// from the *same* colour scheme, so the pair can never disagree.
+enum SDKSurface {
+    static var background: Color {
+        #if canImport(UIKit)
+        return Color(uiColor: .systemBackground)
+        #elseif canImport(AppKit)
+        return Color(nsColor: .windowBackgroundColor)
+        #else
+        return Color.white
+        #endif
+    }
+}
+
+/// Shown when a flow cannot be loaded and the host passed no `errorView:`.
+///
+/// ── What it says depends on the build ───────────────────────────────────────
+///
+/// DEBUG names the cause in the developer's terms — "Flow 'x' is not published
+/// (404)" is the whole answer, and the point of this screen is that somebody
+/// integrating the SDK reads it and knows what to change.
+///
+/// Release says none of that. A default this view supplies is, by definition,
+/// one the host did not customise, so in a shipped app it is an *end user*
+/// reading it — and "Check the apiKey passed to UpliftFunnel.configure" is
+/// both meaningless and an internal detail. They get a neutral sentence and
+/// the same Retry button. A host that wants better in production passes
+/// `errorView:`.
 struct DefaultErrorView: View {
     let error: Error
     let retry: () -> Void
+
+    private var fetchError: FlowFetchError? { error as? FlowFetchError }
+
+    /// One line naming the failure, in the reader's terms rather than HTTP's.
+    ///
+    /// Internal rather than private so `DefaultErrorCopyTests` can hold the
+    /// switch to every `FlowFetchError.Kind`. The wording is the whole point
+    /// of this view; a kind added later that silently fell through to
+    /// "Something went wrong" would put the view back where it started.
+    var headline: String {
+        guard let kind = fetchError?.kind else { return "Something went wrong" }
+        switch kind {
+        case .notFound: return "This flow is not published"
+        case .unauthorized: return "The API key was rejected"
+        case .forbidden: return "This API key can't open that flow"
+        case .network: return "Couldn't reach the server"
+        case .invalidPayload: return "The flow couldn't be read"
+        case .server: return "The server had a problem"
+        }
+    }
+
+    var detail: String {
+        #if DEBUG
+        // `errorDescription` already carries the actionable sentence and the
+        // status code; there is nothing to add and rewording it here would
+        // give the same failure two different texts to search for.
+        return error.localizedDescription
+        #else
+        return "Please try again."
+        #endif
+    }
 
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.circle")
                 .font(.system(size: 40))
                 .foregroundColor(.red)
-            Text(error.localizedDescription)
-                .font(.system(size: 15))
+            Text(headline)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.primary)
+                .multilineTextAlignment(.center)
+            Text(detail)
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
             Button(action: retry) {
                 Text("Retry")
@@ -186,5 +270,6 @@ struct DefaultErrorView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(SDKSurface.background)
     }
 }

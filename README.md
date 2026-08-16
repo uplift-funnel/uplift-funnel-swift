@@ -51,6 +51,36 @@ let start = try await UpliftFunnel.start("main-onboarding")
 UpliftFunnelSessionView(session: start.session, onCompleted: { vars, reason in … })
 ```
 
+### While it loads, and when it can't
+
+`UpliftFunnelFlowView` takes both states, and you should pass them in anything
+you ship:
+
+```swift
+UpliftFunnelFlowView(
+    flowKey: "main-onboarding",
+    loadingView: { AnyView(MySpinner()) },
+    errorView: { error, retry in AnyView(MyErrorScreen(error: error, retry: retry)) })
+```
+
+Leave them out and the SDK supplies its own. In a **debug** build that fallback
+names the cause — "This flow is not published", "The API key was rejected" —
+so an integration problem is readable on the device. In a **release** build it
+says only that something went wrong and offers Retry, because your users are
+not the audience for a 404.
+
+Debug builds also print failures to the console, prefixed `[funnel]`, with the
+URL that was requested:
+
+```
+[funnel] 'main-onboarding': https://api.upliftfunnel.com/v1/flows/main-onboarding — HTTP 401
+```
+
+Nothing is printed in release builds. To report failures from production, pass
+`errorView:` (or call `UpliftFunnel.start` yourself) and log the `Error` the
+way your app already logs errors — `FlowFetchError` carries `kind`, `flowKey`
+and `statusCode`.
+
 ### A/B experiments
 
 ```swift
