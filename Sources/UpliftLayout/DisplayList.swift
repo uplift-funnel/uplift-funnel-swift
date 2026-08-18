@@ -61,6 +61,16 @@ public struct PaintItem: Equatable, Sendable {
     public var style: PaintStyle
     public var content: PaintContent?
 
+    /// Set on a `video` leaf, and the reason is that a video is not paintable.
+    ///
+    /// Everything else in this list is something a 2D context can draw. A
+    /// video needs a real player hung at this item's frame by whatever is
+    /// hosting the canvas, so the spec rides along here and `content` carries
+    /// the poster — which means a surface with no player (the paint goldens,
+    /// the first frames before decode) still shows the right still rather than
+    /// the grey placeholder box every video used to be.
+    public var video: VideoSpec?
+
     /// The clips this item sits inside, outermost first.
     ///
     /// Carried per item rather than pushed and popped. A flat list has no
@@ -97,7 +107,8 @@ public struct PaintItem: Equatable, Sendable {
         clips: [Clip] = [],
         opacity: Double = 1,
         contentInset: Edges = .zero,
-        scroller: String? = nil
+        scroller: String? = nil,
+        video: VideoSpec? = nil
     ) {
         self.path = path
         self.frame = frame
@@ -107,6 +118,7 @@ public struct PaintItem: Equatable, Sendable {
         self.opacity = opacity
         self.contentInset = contentInset
         self.scroller = scroller
+        self.video = video
     }
 
     /// The box text and images are laid inside.
@@ -314,7 +326,8 @@ public enum DisplayListBuilder {
                 bottom: n.padding.bottom + n.borderWidth,
                 left: n.padding.left + n.borderWidth
             ),
-            scroller: escapes ? nil : scroller
+            scroller: escapes ? nil : scroller,
+            video: n.video
         )
         items.append(item)
 

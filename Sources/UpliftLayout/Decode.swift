@@ -393,6 +393,27 @@ public enum LayoutDecoder {
                 position: Point2D(x: p.first ?? 0.5, y: p.count > 1 ? p[1] : 0.5)
             )
         }
+        if type == "video" {
+            let poster = interpolate(localized(props?["poster"], input), input: input)
+            n.video = VideoSpec(
+                url: interpolate(localized(props?["url"], input), input: input),
+                poster: poster.isEmpty ? nil : poster,
+                // Schema defaults, and they are not arbitrary: a video that
+                // autoplays with sound in an onboarding flow is the single
+                // most complained-about thing a phone can do, so `muted`
+                // defaults true and `autoplay` follows the author's word.
+                autoplay: props?["autoplay"] as? Bool ?? true,
+                loop: props?["loop"] as? Bool ?? true,
+                muted: props?["muted"] as? Bool ?? true,
+                controls: props?["controls"] as? Bool ?? false
+            )
+            // The poster rides the ordinary image path so it paints with no
+            // player present — on the goldens, before the first frame decodes,
+            // and anywhere the renderer cannot hang an AVPlayer.
+            if let poster = n.video?.poster {
+                n.image = (url: poster, fit: .cover, position: Point2D(x: 0.5, y: 0.5))
+            }
+        }
 
         // The height a native leaf occupies, when the platform decides it rather
         // than content does.
@@ -426,6 +447,13 @@ public enum LayoutDecoder {
                 if n.width == .hug { n.width = .fill }
                 if n.aspect == nil { n.aspect = 1.5 }
             }
+        case "video", "lottie":
+            // Same trap the rectangular photo frame documents above: an aspect
+            // on a HUG box with no measurable content resolves against zero and
+            // the node comes out zero tall — which is one of the two reasons a
+            // video was invisible even before there was a player to show it.
+            if n.width == .hug { n.width = .fill }
+            if n.aspect == nil { n.aspect = 1.5 }
         case "paywall_handoff", "custom":
             n.controlHeight = 2 * 10 + lu(12 * 1.2) + 2
         default:

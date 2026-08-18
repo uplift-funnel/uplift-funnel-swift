@@ -327,7 +327,10 @@ Flutter SDK's `test/fixtures/` — re-sync when the schema package changes.
 
 ## Known limitations
 
-- **Lottie** renders a static placeholder.
+- **Lottie** does not render. The node decodes to an empty box — there is no
+  placeholder and nothing appears. `video` plays (AVFoundation, muted and
+  looping unless the flow says otherwise); Lottie would need a third-party
+  animation library, which this SDK does not carry.
 - **Custom fonts**: `font_family` aliases (`system`/`serif`/`mono`) map to
   system designs; any other family renders iff the host app bundles a font
   with that name. No runtime Google Fonts download yet.

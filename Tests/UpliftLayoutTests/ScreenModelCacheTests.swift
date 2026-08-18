@@ -36,7 +36,8 @@ final class ScreenModelCacheTests: XCTestCase {
             rootScroll: nil,
             scrolling: empty,
             pinned: empty,
-            fields: []
+            fields: [],
+            videos: []
         )
     }
 

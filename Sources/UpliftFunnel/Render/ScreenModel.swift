@@ -55,6 +55,14 @@ struct ScreenModel {
     /// path so the view identity is stable across rebuilds — an unordered
     /// dictionary would reshuffle the overlays and drop the keyboard mid-word.
     var fields: [(target: TapTarget, item: PaintItem)]
+
+    /// Video leaves paired with their solved frames.
+    ///
+    /// Separate from `fields`, which is keyed on `TapTarget` — an interaction.
+    /// A video is content, and one with `controls: false` has no tap target at
+    /// all, so threading it through the interaction map would have meant
+    /// inventing a handler for something that does not handle anything.
+    var videos: [(spec: VideoSpec, item: PaintItem)]
 }
 
 /// What a rebuild depends on.

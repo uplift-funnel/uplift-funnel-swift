@@ -174,6 +174,15 @@ struct PrimitiveScreenV3: View {
                     return (target, item)
                 }
                 .sorted { $0.item.path < $1.item.path }
+            // Sorted for the reason `fields` is: a stable order keeps SwiftUI
+            // identity stable across rebuilds, and an AVPlayer that gets a new
+            // identity restarts from zero.
+            let videos = shifted.items
+                .compactMap { item -> (spec: VideoSpec, item: PaintItem)? in
+                    guard let spec = item.video else { return nil }
+                    return (spec, item)
+                }
+                .sorted { $0.item.path < $1.item.path }
             // Split by which canvas an item belongs to. `scroller` was
             // resolved when the list was built, including the CSS rule that a
             // fixed node escapes its ancestors' overflow entirely.
@@ -193,7 +202,8 @@ struct PrimitiveScreenV3: View {
                     size: Size2D(width: list.size.width, height: list.size.height + lift),
                     items: pinnedItems
                 ),
-                fields: fields
+                fields: fields,
+                videos: videos
             )
         }
     }
@@ -364,6 +374,19 @@ struct PrimitiveScreenV3: View {
             )
             ForEach(model.fields, id: \.item.path) { field in
                 overlay(for: field.target, item: field.item)
+            }
+            // After the fields, so a control never ends up behind a clip that
+            // happens to sit over it. Positioned on `frame` rather than
+            // `contentBox`: an image fills its border box and a video is the
+            // same kind of content, so padding on the node insets the poster
+            // and the player identically.
+            ForEach(model.videos, id: \.item.path) { video in
+                VideoLeaf(spec: video.spec, corners: video.item.style.corners)
+                    .frame(width: video.item.frame.width, height: video.item.frame.height)
+                    .position(
+                        x: video.item.frame.x + video.item.frame.width / 2,
+                        y: video.item.frame.y + video.item.frame.height / 2
+                    )
             }
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)

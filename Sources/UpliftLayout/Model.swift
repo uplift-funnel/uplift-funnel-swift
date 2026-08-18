@@ -38,6 +38,32 @@ public enum SnapAlign: String, Sendable, Equatable {
     case none, start, center
 }
 
+/// A video leaf's source and playback flags.
+///
+/// A struct rather than the tuple `image` uses, because this one also travels
+/// on `PaintItem`, and `PaintItem` is `Equatable` — a tuple is not.
+public struct VideoSpec: Equatable, Sendable {
+    public var url: String
+    /// A still to paint under the player, through the ordinary image path.
+    public var poster: String?
+    public var autoplay: Bool
+    public var loop: Bool
+    public var muted: Bool
+    public var controls: Bool
+
+    public init(
+        url: String, poster: String? = nil, autoplay: Bool = true,
+        loop: Bool = true, muted: Bool = true, controls: Bool = false
+    ) {
+        self.url = url
+        self.poster = poster
+        self.autoplay = autoplay
+        self.loop = loop
+        self.muted = muted
+        self.controls = controls
+    }
+}
+
 public struct LayoutNode: Sendable {
     /// Dotted child indices — "1.3.0" — matching the web renderer's
     /// `data-node-path`, which is what makes a parity failure name a node.
@@ -128,6 +154,21 @@ public struct LayoutNode: Sendable {
     /// `-webkit-line-clamp`: the run is truncated rather than laid out taller.
     public var maxLines: Int?
     public var image: (url: String, fit: ImageFit, position: Point2D)?
+
+    /// A video leaf's source and playback flags.
+    ///
+    /// Data only. This target may not import AVFoundation any more than it may
+    /// import SwiftUI — layout is a pure function and a player is not part of
+    /// it. What the solver needs from a video is its box, which is the same
+    /// arithmetic an image gets; what the *renderer* needs is everything here,
+    /// carried through the display list so it can hang a real player at the
+    /// frame this pass solved.
+    ///
+    /// `poster` is separate from `image` on purpose. It paints through the
+    /// ordinary image path, so a video shows its still frame immediately, on
+    /// the paint goldens, and on any surface with no player at all — rather
+    /// than the grey box that stood in for every video until now.
+    public var video: VideoSpec?
 
     /// A control's own text — an input's answer, or its placeholder when there
     /// is none.
